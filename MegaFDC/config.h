@@ -8,7 +8,7 @@
 
 // uncomment to support a 1Mbps data rate for 2.88MB drives
 // requires linking with a one line change to the Arduino WInterrupts.c, check isr.cpp for details
-#define FDC_ISR_ASSEMBLY
+//#define FDC_ISR_ASSEMBLY
 
 /*
 
