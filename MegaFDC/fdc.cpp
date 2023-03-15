@@ -472,6 +472,12 @@ void FDC::seekDrive(BYTE track, BYTE head)
       m_idle = false;
     }
     
+    // seek with double stepping?
+    if (m_params->DoubleStepping)
+    {
+      track *= 2;
+    }
+    
     // 0xF Seek
     sendCommand(0xF);
     sendData((head << 2) | m_params->DriveNumber); // head and drive
@@ -503,7 +509,8 @@ void FDC::seekDrive(BYTE track, BYTE head)
         // success, store current track and head
         else
         {
-          m_currentTrack = track;
+          // if double stepping, store the actual media track number
+          m_currentTrack = m_params->DoubleStepping ? track/2 : track;
           m_currentHead = head;
           
           m_lastError = false;
@@ -1092,12 +1099,6 @@ void FDC::convertLogicalSectorToCHS(WORD logicalSector, BYTE& track, BYTE& head,
   track = (logicalSector / m_params->SectorsPerTrack) / m_params->Heads;
   head = (logicalSector / m_params->SectorsPerTrack) % m_params->Heads;
   sector = (logicalSector % m_params->SectorsPerTrack) + 1;
-  
-  // double stepping?
-  if (m_params->DoubleStepping && (track % 2))
-  {
-    track++;
-  }
 }
 
 // get number of sectors total
@@ -1107,14 +1108,8 @@ WORD FDC::getTotalSectorCount()
   {
     return 0;
   }
-  
-  WORD tracks = m_params->Tracks;
-  if (m_params->DoubleStepping)
-  {
-    tracks /= 2;
-  }
-  
-  return tracks * m_params->SectorsPerTrack * m_params->Heads;
+    
+  return m_params->Tracks * m_params->SectorsPerTrack * m_params->Heads;
 }
 
 // get the maximum sector count for a read/write operation

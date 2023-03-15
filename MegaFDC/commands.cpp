@@ -972,7 +972,6 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
       if (key == 'Y')
       {
         drive->CommRate = 300;
-        drive->Tracks = 80;
         drive->DoubleStepping = true;
       }
     }
@@ -1775,16 +1774,10 @@ void CommandFORMAT(FDC::DiskDriveMediaParams* drive)
     if (head < fdc->getParams()->Heads)
     {
       continue;
-    }    
-    head = 0;    
-       
-    // double stepping
+    }
+    
+    head = 0;
     track++;
-    if (fdc->getParams()->DoubleStepping)
-    {
-      fdc->seekDrive(track, head);
-      track++;      
-    }   
   }
   
   ui->print(Progmem::getString(Progmem::uiNewLine));
@@ -1885,15 +1878,10 @@ void CommandVERIFY(FDC::DiskDriveMediaParams* drive)
     if (head < fdc->getParams()->Heads)
     {
       continue;
-    }    
-    head = 0;    
-       
+    }
+    
+    head = 0;       
     track++;
-    if (fdc->getParams()->DoubleStepping)
-    {
-      fdc->seekDrive(track, head);
-      track++;      
-    }   
   }
   
   ui->print(Progmem::getString(Progmem::uiNewLine));
@@ -1937,12 +1925,10 @@ void CommandIMAGE(FDC::DiskDriveMediaParams* drive)
     fdc->setActiveDrive(&g_diskDrives[chosenDrive]);
   }
   
-  // options: read from disk to image, write disk from image, cancel
-  BYTE tracks = !fdc->getParams()->DoubleStepping ? fdc->getParams()->Tracks : fdc->getParams()->Tracks / 2;
-  
+  // options: read from disk to image, write disk from image, cancel 
   ui->print("");  
   ui->print(Progmem::getString(Progmem::imageTransferLen), (DWORD)fdc->getTotalSectorCount() * fdc->getParams()->SectorSizeBytes);
-  ui->print(Progmem::getString(Progmem::imageGeometry), tracks, fdc->getParams()->Heads,
+  ui->print(Progmem::getString(Progmem::imageGeometry), fdc->getParams()->Tracks, fdc->getParams()->Heads,
                                                         fdc->getParams()->SectorsPerTrack, fdc->getParams()->SectorSizeBytes);
   ui->print(Progmem::getString(Progmem::imageReadDisk), chosenDrive + 65);
   ui->print(Progmem::getString(Progmem::imageWriteDisk), chosenDrive + 65);
