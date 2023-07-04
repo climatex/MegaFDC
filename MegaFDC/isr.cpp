@@ -16,6 +16,7 @@ extern volatile WORD dataPos;
 // for 1Mbps data rate support (2.88MB drives), FDC_ISR_ASSEMBLY must be defined in config.h
 // then, comment out IMPLEMENT_ISR(INT4_vect, EXTERNAL_INT_0) in WInterrupts.c of Arduino core for the Mega 2560
 // as including our ISR will cause a redefinition of __vector_5 error of attachInterrupt() API
+// just remember to uncomment afterwards, or if building anything else!
 
 #ifndef FDC_ISR_ASSEMBLY
 
@@ -112,7 +113,8 @@ ISR(INT4_vect, ISR_NAKED)
   "                out %[ddra],r16        \n"  // DDRA = 0; set data lines as input
   "                ldi r16,0x24           \n"
   "                out %[portc],r16       \n"  // PORTC = 0x24; set address lines to MSR, /RD down
-  "                nop                    \n"  // 62.5ns delay for FDC to populate data lines
+  "                nop                    \n"  // delay for FDC to populate data lines
+  "                nop                    \n"
   "                in r17,%[pina]         \n"  // 8-bits of MSR from PINA in R17
   "                ldi r16,0x34           \n"
   "                out %[portc],r16       \n"  // PORTC = 0x34; /RD up
@@ -141,6 +143,7 @@ ISR(INT4_vect, ISR_NAKED)
   "                ldi r16,0x25           \n"  // PORTC = 0x25; set address lines to DTR, /RD down
   "                out %[portc],r16       \n"
   "                nop                    \n"  // wait for the FDC to populate its lines
+  "                nop                    \n"
   "                in r17,%[pina]         \n"  // 8-bits of DTR from PINA in R17
   "                ldi r16,0x35           \n"
   "                out %[portc],r16       \n"  // PORTC = 0x35; /RD up
@@ -183,6 +186,7 @@ ISR(INT4_vect, ISR_NAKED)
   "                out %[portc],r16       \n"
   "                out %[porta],r17       \n"  // write DTR
   "                nop                    \n"  // give it time
+  "                nop                    \n"
   "                ldi r16,0x35           \n"
   "                out %[portc],r16       \n"  // PORTC = 0x35; /WR up
   "                rjmp after_buf_io      \n"  // increment dataPos, restore registers and quit

@@ -4,10 +4,6 @@
 
 #include "config.h"
 
-// compile-time clock delay
-#define DELAY_CYCLES(n) __builtin_avr_delay_cycles(n);
-#define DELAY_MS(n)     DELAY_CYCLES(16000*n);
-
 // global disk I/O buffer
 volatile BYTE g_rwBuffer[SECTOR_BUFFER_SIZE];
 volatile BYTE intType = 0;
@@ -68,6 +64,9 @@ FDC::FDC()
   DDRA = 0xFF;
   PORTA = 0;
   
+  // TG43 (on PD7) off by default
+  PORTD |= 0x80;
+
   // pull /CS, /RD, /WR high, RESET high for some good 30us
   PORTC = 0x78;  
   DELAY_CYCLES(500);
@@ -396,6 +395,7 @@ void FDC::recalibrateDrive()
           m_idle = true;
           
           m_lastError = false;
+          PORTD |= 0x80; // deassert TG43
           return;
         }
       }
@@ -515,6 +515,17 @@ void FDC::seekDrive(BYTE track, BYTE head)
           
           m_lastError = false;
           m_idle = true;
+          
+          // handle optional TG43 line on PD7
+          if (m_currentTrack > 42)
+          {
+            PORTD &= 0x7F; //TG43 on
+          }
+          else
+          {
+            PORTD |= 0x80; //TG43 off
+          }
+          
           return;
         }
       }

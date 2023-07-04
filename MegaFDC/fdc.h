@@ -5,6 +5,10 @@
 #pragma once
 #include "config.h"
 
+// compile-time clock delay
+#define DELAY_CYCLES(n) __builtin_avr_delay_cycles(n);
+#define DELAY_MS(n)     DELAY_CYCLES(16000*n);
+
 // FDC address registers
 #define DCR 2 // drive control register (W only)
 #define MSR 4 // main status register (R only)
@@ -21,7 +25,7 @@ BYTE readRegister(BYTE reg)
   PORTC = (PORTC & 0xF8) | reg;   // set 3 bits of address lines
   DDRA = 0;                       // set data lines as input
   PORTC ^= 0x10;                  // toggle /RD
-  asm volatile ("nop");           // give it time to populate
+  DELAY_CYCLES(2);                // give it time to populate
   const BYTE value = PINA;        // read 8 bits of data lines
   PORTC ^= 0x10;                  // toggle /RD
    
@@ -35,7 +39,7 @@ void writeRegister(BYTE reg, BYTE value)
   DDRA = 0xFF;                    // set data lines as output
   PORTC ^= 0x20;                  // toggle /WR
   PORTA = value;                  // write 8 bits to data lines
-  asm volatile ("nop");           // delay one instruction
+  DELAY_CYCLES(2);                // delay two cycles
   PORTC ^= 0x20;                  // toggle /WR
 }
 

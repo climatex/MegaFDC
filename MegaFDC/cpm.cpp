@@ -115,7 +115,7 @@ void convertCPMFileNameToCmdLine(const BYTE* cpmName, BYTE* cmdLine)
   }
 }
 
-// checks first 8 bytes of CP/M file name, must be printable standard ASCII 
+// checks for validity of a 11-character CP/M file name (not null terminated)
 bool cpmVerifyDirFileName(const BYTE* cpmFileName)
 {
   if (!cpmFileName)
@@ -123,9 +123,31 @@ bool cpmVerifyDirFileName(const BYTE* cpmFileName)
     return false;
   }
   
-  for (BYTE index = 0; index < 8; index++)
+  for (BYTE index = 0; index < FILE_NAME_LENGTH; index++)
   {
-    if ((cpmFileName[index] < 0x20) || (cpmFileName[index] > 0x7E))
+    // unprintable character
+    if (cpmFileName[index] < 0x20)
+    {
+      return false;
+    }
+    
+    // 7-bit ASCII (MSB is used for attributes)
+    const BYTE sevenBit = cpmFileName[index] & 0x7F;
+    
+    // found lowercase characters in filename? suspicious - ignore
+    if ((sevenBit > 0x60) && (sevenBit < 0x7B))
+    {
+      return false;
+    }
+    
+    // : ; < = > ?
+    else if ((sevenBit > 0x39) && (sevenBit < 0x40))
+    {
+      return false; 
+    }
+    
+    // . [ ]
+    else if ((sevenBit == 0x2E) || (sevenBit == 0x5B) || (sevenBit == 0x5D))
     {
       return false;
     }
@@ -211,7 +233,7 @@ bool cpmReadDirectory()
     
     for (BYTE entryIndex = 0; entryIndex < entryCount; entryIndex++)
     {
-      // address the read buffer
+      // sanity check: address the read buffer
       CPMDirectoryEntry* entry = (CPMDirectoryEntry*)(&g_rwBuffer[entryIndex*DIRECTORY_ENTRY_SIZE]);
       
       // the user number is invalid (shall be 0-15 or 0-31), 0xE5 means deleted/unused entry
@@ -226,6 +248,7 @@ bool cpmReadDirectory()
         continue;
       }
       
+      // valid filename      
       cpmDirectoryCount++;
     }
     
@@ -275,7 +298,9 @@ bool cpmReadDirectory()
     {
       // disk buffer entry
       CPMDirectoryEntry* entry = (CPMDirectoryEntry*)(&g_rwBuffer[entryIndex*DIRECTORY_ENTRY_SIZE]);
-      if (entry->userNumber == DIRECTORY_ENTRY_UNUSED)
+      
+      // exact same sanity check as above
+      if (entry->userNumber > 31)
       {
         continue;
       }
@@ -426,9 +451,9 @@ void cpmDirCommand()
     }
         
     // attributes readonly, archive, system - if supported
-    strncat(printBuffer, file[8]  & 0x80 ? "R" : "-", MAX_CHARS);
-    strncat(printBuffer, file[10] & 0x80 ? "A" : "-", MAX_CHARS);
-    strncat(printBuffer, file[9]  & 0x80 ? "S" : "-", MAX_CHARS);
+    strncat(printBuffer, file[9]  & 0x80 ? "R" : "-", MAX_CHARS);
+    strncat(printBuffer, file[11] & 0x80 ? "A" : "-", MAX_CHARS);
+    strncat(printBuffer, file[10] & 0x80 ? "S" : "-", MAX_CHARS);
         
     // name
     strncat(printBuffer, " ", MAX_CHARS);
@@ -518,14 +543,16 @@ bool cpmOpenFile(const BYTE* cmdLine, BYTE userNumber)
     memset(sortedEntryBuf, 0xFF, DIRECTORY_ENTRIES);     
     bool fileFound = false;
     
-    // we are not using the array to display directory contents, so get rid of any attributes on extension
-    // otherwise memcmp would fail, as our supplied filename does not use MSB on the three extension bytes
     for (BYTE index = 0; index < cpmDirectoryCount; index++)
     {
       CPMDir* ent = &cpmDirectory[index];      
-      ent->fileName[8]  &= 0x7F;
-      ent->fileName[9]  &= 0x7F;
-      ent->fileName[10] &= 0x7F;
+      
+      // we are not using the array to display directory contents
+      // so get rid of any attributes (incl. user-defined), otherwise memcmp would fail
+      for (BYTE chr = 0; chr < FILE_NAME_LENGTH; chr++)
+      {
+        ent->fileName[chr] &= 0x7F;
+      }
       
       if (memcmp(ent, file, sizeof(file)) == 0)
       {
@@ -711,10 +738,12 @@ bool cpmDeleteFile(const BYTE* cmdLine)
         continue;
       }
       
-      // erase any file attributes from the extension
-      entry->fileName[8]  &= 0x7F;
-      entry->fileName[9]  &= 0x7F;
-      entry->fileName[10] &= 0x7F;
+      // erase any file attributes
+      for (BYTE chr = 0; chr < FILE_NAME_LENGTH; chr++)
+      {
+        entry->fileName[chr] &= 0x7F;
+      }
+      
       if (memcmp(entry->fileName, cpmFileName, sizeof(cpmFileName)) != 0)
       {
         continue;
