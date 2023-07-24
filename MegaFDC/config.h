@@ -37,6 +37,9 @@
   1st contact           (PORTG5: D06)
   2nd contact           (GND)
   
+  optional TG43 (/REDWC) line handling: reduced write current past track 43 for 8" drives
+  TG43                  (PORTD7: D38)
+  
   Floppy disk controller (pinout fixed)
   Vcc, GND              (Vcc, GND)
   INT                   (PORTE4: D02)

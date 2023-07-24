@@ -1034,7 +1034,7 @@ void FDC::fatalError(BYTE message)
   ui->readKey("");
 }
 
-// switch to other drive - set new params pointer
+// switch to other drive, set new params pointer and perform a quick seek test
 void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
 {
   if (!newParams)
@@ -1042,7 +1042,7 @@ void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
     return;
   }
   
-  // turn interrupts off, set new parameters, set previous flags default and reset the controller
+  // turn interrupts off, set new parameters, set previous flags default
   cli();
   motorOff();
   
@@ -1066,7 +1066,36 @@ void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
   setInterrupt();
   sei();
 
+  // recalibrate and seek to track 0
   recalibrateDrive();
+  
+  // now seek to track 10, then down to 0 in decrements of two
+  int trackToSeek = 10;
+  while (trackToSeek >= 0)
+  {
+    seekDrive(trackToSeek, 0);
+    
+    // call 0x4 Sense drive status to inspect TRK00 signal each try
+    // make sure the drive is selected and motor on, beforehand
+    m_idle = false;
+    motorOn();
+    
+    sendCommand(4);
+    sendData(m_params->DriveNumber);
+    BYTE onTrackZero = getData() & 0x10;
+        
+    // inspect TRK00 signal: is the head moving and sensor working?
+    if (((trackToSeek == 0) && !onTrackZero) ||
+        ((trackToSeek > 0) && onTrackZero))
+    {
+      m_idle = true;  
+      fatalError(Progmem::errSeek);
+    }
+    
+    trackToSeek -= 2;
+  }
+  
+  m_idle = true;
 }
 
 // determine if disk has been changed in the drive
