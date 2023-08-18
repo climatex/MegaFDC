@@ -66,6 +66,11 @@ Ui::Ui()
 // reset board
 void Ui::reset()
 {
+  // de-selects the FDC lines and pulls its hardware RESET line high
+  // this helps the controller to reinitialize after a sofware reset
+  PORTC = 0x78;
+  
+  // software reset by null pointer function call
   resetBoard();
 }
 

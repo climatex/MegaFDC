@@ -8,11 +8,11 @@
 
 // +00, 01, checksum byte
 // +01, 01, number of drives configured
-// +02, 26, A: drive configuration
-// +28, 26, B: drive configuration
-// +54, 26, C: drive configuration
-// +80, 26, D: drive configuration
-// +106 to 4K: 0s
+// +02, 27, A: drive configuration
+// +29, 27, B: drive configuration
+// +56, 27, C: drive configuration
+// +83, 27, D: drive configuration
+// +110 to 4K: 0s
 
 // simple 8-bit checksum
 BYTE eepromComputeChecksum()

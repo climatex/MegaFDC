@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Interface_Floppy")(type "KiCad")(uri "${KIPRJMOD}/Interface_Floppy.kicad_sym")(options "")(descr ""))
+)

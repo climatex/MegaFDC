@@ -1,0 +1,5 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "Arduino_MountingHole")(type "KiCad")(uri "${KICAD7_TEMPLATE_DIR}/Arduino_Mega/Arduino_MountingHole.pretty")(options "")(descr ""))
+  (lib (name "Connector_MiniDIN")(type "KiCad")(uri "${KIPRJMOD}/Connector_MiniDIN.pretty")(options "")(descr ""))
+)

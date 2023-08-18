@@ -6,10 +6,6 @@
 // conditional build; comment out line to disable display and keyboard support
 #define UI_ENABLED
 
-// uncomment to support a 1Mbps data rate for 2.88MB drives
-// requires linking with a one line change to the Arduino WInterrupts.c, check isr.cpp for details
-//#define FDC_ISR_ASSEMBLY
-
 /*
 
   Default pin assignments to a Mega2560 rev3 board
@@ -29,6 +25,9 @@
   D0-7                  (PORTL0-7: D49, D48, D47, D46, D45, D44, D43, D42)
   E, RS, RST            (PORTG0-2: D41, D40, D39)  
   
+  optional TG43 (/REDWC) line handling: reduced write current past track 43 for 8" drives
+  TG43                  (PORTD7: D38)  
+  
   optional switch/jumper to communicate only via serial interface even when built with UI_ENABLED
   1st contact           (PORTE3: D05)
   2nd contact           (GND)
@@ -36,10 +35,7 @@
   optional switch/jumper to switch the communication rate from 115200 bps to 9600 bps
   1st contact           (PORTG5: D06)
   2nd contact           (GND)
-  
-  optional TG43 (/REDWC) line handling: reduced write current past track 43 for 8" drives
-  TG43                  (PORTD7: D38)
-  
+   
   Floppy disk controller (pinout fixed)
   Vcc, GND              (Vcc, GND)
   INT                   (PORTE4: D02)

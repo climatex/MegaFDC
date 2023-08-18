@@ -1,5 +1,5 @@
 // MegaFDC (c) 2023 J. Bogin, http://boginjr.com
-// DP8473 floppy disk controller interface
+// Floppy disk controller interface
 // Software compatible with a NEC uPD765 or any other PC FDC
 
 #pragma once
@@ -14,6 +14,16 @@
 #define MSR 4 // main status register (R only)
 #define DTR 5 // data register (R/W)
 #define DRR 7 // data rate register (W) / disk change info, bit 0x80 (R)
+
+// interrupt types
+#define INTERRUPT_ACKNOWLEDGE 1 // acknowledge INT has been fired only
+#define INTERRUPT_READ        2 // read data from disk
+#define INTERRUPT_VERIFY      3 // read data from disk with no buffer storage
+#define INTERRUPT_WRITE       4 // write data to disk
+
+// special feature bit flags
+#define SUPPORT_1MBPS         1 // supports CONFIGURE command to set up a FIFO buffer for 1 Mbps transfers (82077AA, PC8477)
+#define SUPPORT_PERPENDICULAR 2 // supports PERPENDICULAR command for 2.88MB 3.5" support (82077AA, PC8477)
 
 // inlined functions to query values from the FDC
 inline BYTE readRegister(BYTE reg) __attribute__((always_inline));
@@ -52,7 +62,7 @@ public:
     return &fdc;
   }
   
-  // POD struct about disk, drive and logical media in it, 26 bytes
+  // POD struct about disk, drive and logical media in it, 27 bytes
   struct DiskDriveMediaParams
   {
     BYTE DriveNumber;
@@ -71,6 +81,7 @@ public:
     bool FM;
     bool DoubleStepping;
     bool DiskChangeLineSupport;
+    bool PerpendicularRecording;
     bool UseFAT12;
     bool UseCPMFS;
     BYTE FATMediaDescriptor;
@@ -84,6 +95,7 @@ public:
   bool isDiskChanged();
   bool wasDiskChangeInquired() { return m_diskChangeInquired; }
   DiskDriveMediaParams* getParams() { return m_params; }
+  BYTE getSpecialFeatures() { return m_specialFeatures; }
   
   // errors signaled when all retry attempts were exhausted; no disk/write protected: only 1 attempt
   bool getLastError() { return m_lastError; }
@@ -114,7 +126,7 @@ private:
   FDC();
   
   void motorOn(bool withDelay = true); // automatic
-  void setInterrupt(BYTE operation = 1);
+  void setInterrupt(BYTE operation = INTERRUPT_ACKNOWLEDGE);
   void waitForINT();
   bool waitForDATA();
   BYTE getData();
@@ -123,6 +135,7 @@ private:
   BYTE convertSectorSize(WORD sectorSize);
   bool processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo);
   void fatalError(BYTE message);
+  void setRecordingMode();
   
   DiskDriveMediaParams* m_params;
   BYTE m_currentTrack;
@@ -135,4 +148,6 @@ private:
   bool m_diskWriteProtected;
   bool m_diskChangeInquired;
   bool m_lastError;
+  
+  BYTE m_specialFeatures;
 };

@@ -155,6 +155,7 @@ public:
     drive5Inch,
     drive5InDoubleStep,
     drive3Inch,
+    drive3Inch_288,
     
     specifyingAll,
     customTracks,
@@ -173,6 +174,9 @@ public:
     custom5InchMFM,
     custom3InchFM,
     custom3InchMFM,
+    custom3InchMFM_1M,
+    customEDModeInfo,
+    customEDMode,
     customUseFAT,
     customMediaByte,
     customRootDir,
@@ -196,6 +200,7 @@ public:
     drivParmType5HD,
     drivParmType3DD,
     drivParmType3HD,
+    drivParmType3ED,
     drivParmDoubleStep,
     drivParmDiskChange,
     drivParmSRT,
@@ -217,6 +222,7 @@ public:
     drivParmSectorGap,
     drivParmFormatGap,
     drivParmFormatFill,
+    drivParmEDMode,
     drivParmFS,
     drivParmFAT,
     drivParmCPM,
@@ -291,6 +297,7 @@ public:
     fsCPMFileEmpty,
     fsCPMNoFilesFound
     
+    // 6 strings left for a BYTE-indexed stringtable :-)
   };
   
   // retrieve string from progmem, buffer valid until next call
@@ -459,7 +466,8 @@ private:
   PROGMEM_STR m_drive5InchSSDD[]     PROGMEM = "Disk 1(6)0K 1(8)0K: ";
   PROGMEM_STR m_drive5Inch[]         PROGMEM = "Disk 3(2)0K 3(6)0K (1).2M: ";
   PROGMEM_STR m_drive5InDoubleStep[] PROGMEM = "Drive hi-density capable? Y/N: ";
-  PROGMEM_STR m_drive3Inch[]         PROGMEM = "Disk (7)20K (1).44M (2).88M: ";
+  PROGMEM_STR m_drive3Inch[]         PROGMEM = "Disk (7)20K (1).44M: ";
+  PROGMEM_STR m_drive3Inch_288[]     PROGMEM = "Disk (7)20K (1).44M (2).88M: ";
 
 // init drives command with non standard geometry - asks everything. colon right parenthesis
   PROGMEM_STR m_specifyingAll[]      PROGMEM = "Specifying all parameters for %c:\r\n";
@@ -477,8 +485,11 @@ private:
   PROGMEM_STR m_custom8InchEnc[]     PROGMEM = "(2)50kbps FM / (5)00kbps MFM: ";
   PROGMEM_STR m_custom5InchFM[]      PROGMEM = "(1)25 1(5)0 (2)50 kbps FM: ";
   PROGMEM_STR m_custom5InchMFM[]     PROGMEM = "(2)50 (3)00 (5)00 kbps MFM: ";
-  PROGMEM_STR m_custom3InchFM[]      PROGMEM = "(1)25 (2)50 (5)00 kbps FM: ";
-  PROGMEM_STR m_custom3InchMFM[]     PROGMEM = "(2)50K (5)00K 1(M)bps MFM: ";
+  PROGMEM_STR m_custom3InchFM[]      PROGMEM = "(1)25 (2)50 kbps FM: ";
+  PROGMEM_STR m_custom3InchMFM[]     PROGMEM = "(2)50 (5)00 kbps MFM: ";
+  PROGMEM_STR m_custom3InchMFM_1M[]  PROGMEM = "(2)50K (5)00K 1(M)bps MFM: ";
+  PROGMEM_STR m_customEDModeInfo[]   PROGMEM = "Press N here for normal floppy\r\n";
+  PROGMEM_STR m_customEDMode[]       PROGMEM = "Perpendicular recording? Y/N: ";
   PROGMEM_STR m_customUseFAT[]       PROGMEM = "Use FAT12 filesystem? Y/N: ";
   PROGMEM_STR m_customMediaByte[]    PROGMEM = "FAT media descriptor (hex): ";
   PROGMEM_STR m_customRootDir[]      PROGMEM = "Root dir entries (in 16s): ";
@@ -502,6 +513,7 @@ private:
   PROGMEM_STR m_drivParmType5HD[]    PROGMEM = "5.25\" HD";
   PROGMEM_STR m_drivParmType3DD[]    PROGMEM = "3.5\" DD";
   PROGMEM_STR m_drivParmType3HD[]    PROGMEM = "3.5\" HD";
+  PROGMEM_STR m_drivParmType3ED[]    PROGMEM = "3.5\" ED";
   PROGMEM_STR m_drivParmDoubleStep[] PROGMEM = "Drive double-stepping  ";
   PROGMEM_STR m_drivParmDiskChange[] PROGMEM = "Supports DISKCHG line  ";
   PROGMEM_STR m_drivParmSRT[]        PROGMEM = "Drive step rate time   %u ms";
@@ -523,6 +535,7 @@ private:
   PROGMEM_STR m_drivParmSectorGap[]  PROGMEM = "Sector gap length      0x%02X";
   PROGMEM_STR m_drivParmFormatGap[]  PROGMEM = "Format gap length      0x%02X";
   PROGMEM_STR m_drivParmFormatFill[] PROGMEM = "Format fill byte       0x%02X";
+  PROGMEM_STR m_drivParmEDMode[]     PROGMEM = "Perpendicular/ED mode  ";
   PROGMEM_STR m_drivParmFS[]         PROGMEM = "Filesystem support     ";
   PROGMEM_STR m_drivParmFAT[]        PROGMEM = "FAT12";
   PROGMEM_STR m_drivParmCPM[]        PROGMEM = "CP/M";
@@ -642,26 +655,26 @@ private:
                                                   m_driveInches, m_drive8InchText1, m_drive8InchText2, m_drive8InchText3, 
                                                   m_drive8InchText4, m_drive8InchText5, m_drive8InchText6,
                                                   m_drive5InchSides, m_drive5InchSSDD, m_drive5Inch, 
-                                                  m_drive5InDoubleStep, m_drive3Inch,
+                                                  m_drive5InDoubleStep, m_drive3Inch, m_drive3Inch_288,
                                                   
                                                   m_specifyingAll, m_customTracks, m_customDoubleStep, m_customChangeline,
                                                   m_customHeads, m_customSpt, m_customSectorSize, m_customSectorGap,
                                                   m_customFormatGap3, m_customFormatFiller, m_customEncoding,
                                                   m_customDataRateSel, m_custom8InchEnc, m_custom5InchFM, m_custom5InchMFM,
-                                                  m_custom3InchFM, m_custom3InchMFM, m_customUseFAT, m_customMediaByte,
-                                                  m_customRootDir, m_customClusterSize,
+                                                  m_custom3InchFM, m_custom3InchMFM, m_custom3InchMFM_1M, m_customEDModeInfo,
+                                                  m_customEDMode, m_customUseFAT, m_customMediaByte, m_customRootDir, m_customClusterSize,
                                                   
                                                   m_processInvalidCmd, m_processInvalidDrv, m_processUnknownDrv,
                                                   m_processNoFS, m_processInvalidChr1, m_processInvalidChr2, m_processMaxPath,
                                                   
                                                   m_drivParmCaption, m_drivParmTypeText, m_drivParmType8SD, m_drivParmType8DD,
-                                                  m_drivParmType5DD, m_drivParmType5HD, m_drivParmType3DD, m_drivParmType3HD,
+                                                  m_drivParmType5DD, m_drivParmType5HD, m_drivParmType3DD, m_drivParmType3HD, m_drivParmType3ED,
                                                   m_drivParmDoubleStep, m_drivParmDiskChange, m_drivParmSRT, m_drivParmHLT,
                                                   m_drivParmHUT, m_drivParmTracks, m_drivParmHeads, m_drivParmHeadsOne,
                                                   m_drivParmHeadsTwo, m_drivParmSpt,  m_drivParmSectorSize, m_drivParmEncoding,
                                                   m_drivParmFM, m_drivParmMFM, m_drivParmDataRate, m_drivParmFDCRate,
                                                   m_drivParmKbps, m_drivParmMbps, m_drivParmSectorGap, m_drivParmFormatGap,
-                                                  m_drivParmFormatFill, m_drivParmFS, m_drivParmFAT, m_drivParmCPM,
+                                                  m_drivParmFormatFill, m_drivParmEDMode, m_drivParmFS, m_drivParmFAT, m_drivParmCPM,
                                                   m_drivParmFATMedia, m_drivParmFATRootDir, m_drivParmFATCluster,
                                                   
                                                   m_persistStore, m_persistRemove,

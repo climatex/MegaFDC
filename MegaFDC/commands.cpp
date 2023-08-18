@@ -985,10 +985,14 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
     drive->SectorSizeBytes = 512;
     drive->Tracks = 80;
     drive->Heads = 2;
-       
-    // 720K (9spt DD), 1.44MB (18spt HD), 2.88MB (36spt ED)
-    ui->print(Progmem::getString(Progmem::drive3Inch));
-    key = ui->readKey("712");
+    
+    // 720K (9spt DD), 1.44MB (18spt HD)
+    // offer 2.88MB (36spt ED) only if supported - 1Mbps datarate with perpendicular recording
+    const BYTE edSupport = (fdc->getSpecialFeatures() & SUPPORT_1MBPS) && 
+                           (fdc->getSpecialFeatures() & SUPPORT_PERPENDICULAR);
+                           
+    ui->print(Progmem::getString(edSupport ? Progmem::drive3Inch_288 : Progmem::drive3Inch));
+    key = toupper(ui->readKey(edSupport ? "712" : "71"));
     ui->print(Progmem::getString(Progmem::uiEchoKey), key);
     
     switch(key)
@@ -996,7 +1000,7 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
     case '7':
       drive->SectorsPerTrack = 9;
       drive->CommRate = 250;
-      drive->GapLength = 0x2A;
+      drive->GapLength = 0x1B;
       drive->Gap3Length = 0x50;
       drive->FATMediaDescriptor = 0xF9;
       drive->FATRootDirEntries = 112;
@@ -1015,10 +1019,11 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
       drive->SectorsPerTrack = 36;
       drive->CommRate = 1000;
       drive->GapLength = 0x1B;
-      drive->Gap3Length = 0x54;
+      drive->Gap3Length = 0x53;
       drive->FATMediaDescriptor = 0xF0;
       drive->FATRootDirEntries = 240;
       drive->FATClusterSizeBytes = 1024;
+      drive->PerpendicularRecording = true;
       break;
     }
   }
@@ -1194,7 +1199,7 @@ void SetDriveParametersAdvanced(FDC::DiskDriveMediaParams* drive)
       if (drive->FM)
       {
         ui->print(Progmem::getString(Progmem::custom3InchFM));
-        key = ui->readKey("125");
+        key = ui->readKey("12");
         switch(key)
         {
         case '1':
@@ -1203,16 +1208,15 @@ void SetDriveParametersAdvanced(FDC::DiskDriveMediaParams* drive)
         case '2':
           drive->CommRate = 500;
           break;
-        case '5':
-          drive->CommRate = 1000;
-          break;
         }
         ui->print(Progmem::getString(Progmem::uiEchoKey), key);
       }
       else
       {
-        ui->print(Progmem::getString(Progmem::custom3InchMFM));
-        key = toupper(ui->readKey("25M"));
+        // detect if 1Mbps is supported
+        const BYTE features = fdc->getSpecialFeatures();
+        ui->print(Progmem::getString((features & SUPPORT_1MBPS) ? Progmem::custom3InchMFM_1M : Progmem::custom3InchMFM));
+        key = toupper(ui->readKey((features & SUPPORT_1MBPS) ? "25M" : "25"));
         switch(key)
         {
         case '2':
@@ -1226,6 +1230,16 @@ void SetDriveParametersAdvanced(FDC::DiskDriveMediaParams* drive)
           break;
         }
         ui->print(Progmem::getString(Progmem::uiEchoKey), key);
+        
+        // detect if perpendicular recording is supported (500k/1Mbps MFM)
+        if ((features & SUPPORT_PERPENDICULAR) && (drive->CommRate >= 500))
+        {
+          ui->print(Progmem::getString(Progmem::customEDModeInfo));          
+          ui->print(Progmem::getString(Progmem::customEDMode));
+          key = toupper(ui->readKey("YN"));
+          drive->PerpendicularRecording = (key == 'Y');
+          ui->print(Progmem::getString(Progmem::uiEchoKey), key);
+        }
       }
     }
   }
@@ -1563,7 +1577,18 @@ void CommandDRIVPARM(FDC::DiskDriveMediaParams* drive)
   {
     if (!drive->FM)
     {
-      ui->print(Progmem::getString((drive->CommRate >= 500) ? Progmem::drivParmType3HD : Progmem::drivParmType3DD));
+      switch(drive->CommRate)
+      {
+      case 1000:
+        ui->print(Progmem::getString(Progmem::drivParmType3ED));
+        break;
+      case 500:
+        ui->print(Progmem::getString(Progmem::drivParmType3HD));
+        break;
+      default:
+        ui->print(Progmem::getString(Progmem::drivParmType3DD));
+        break;
+      }
     }
     else
     {
@@ -1638,6 +1663,11 @@ void CommandDRIVPARM(FDC::DiskDriveMediaParams* drive)
   ui->print(Progmem::getString(Progmem::drivParmFormatFill), drive->LowLevelFormatFiller);
   ui->print(Progmem::getString(Progmem::uiNewLine)); NEXT_LINE_PAUSE;
   
+  // regular or perpendicular recording mode
+  ui->print(Progmem::getString(Progmem::drivParmEDMode));
+  ui->print(Progmem::getString(drive->PerpendicularRecording ? Progmem::uiEnabled : Progmem::uiDisabled));
+  ui->print(Progmem::getString(Progmem::uiNewLine)); NEXT_LINE_PAUSE;
+    
   // filesystem configuration
   ui->print(Progmem::getString(Progmem::drivParmFS));
   if (drive->UseFAT12)

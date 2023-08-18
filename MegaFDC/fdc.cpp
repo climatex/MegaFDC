@@ -1,5 +1,5 @@
 // MegaFDC (c) 2023 J. Bogin, http://boginjr.com
-// DP8473 floppy disk controller interface
+// Floppy disk controller interface
 // Software compatible with a NEC uPD765 or any other PC FDC
 
 #include "config.h"
@@ -51,6 +51,9 @@ FDC::FDC()
   m_diskWriteProtected = false;
   m_diskChangeInquired = false;
   m_idle = true;
+  
+  // no special features support determined yet
+  m_specialFeatures = 0;
    
   // current CHS values
   m_currentTrack = 0;
@@ -207,10 +210,9 @@ void FDC::resetController()
 { 
   m_idle = false;
   
+  // reset interrupt handler
   cli();
-#ifndef FDC_ISR_ASSEMBLY
   detachInterrupt(2);
-#endif
   intType = 0;
   setInterrupt();
   sei();
@@ -239,6 +241,46 @@ void FDC::resetController()
     sendCommand(8);
     getData(); // ST0, unused
     getData(); // current track number, unused
+  }
+  
+  // determine special support - try out controller capabilities: CONFIGURE and PERPENDICULAR commands
+  // the former to configure FIFO enabled to offer 1Mbps mode, the latter to offer 2.88MB drives
+  // both commands have no result phase - if we get one, it means the FDC did not understand the command  
+  // start with 0x13 - Configure
+  sendCommand(0x13);
+  
+  // wait for RQM response after sending
+  while (!(readRegister(MSR) & 0x80)) {};
+  
+  // direction is now FDC->AVR instead of AVR->FDC? this means the FDC wants to tell us something
+  if ((readRegister(MSR) & 0xC0) == 0xC0)
+  {
+    // and we know what it is: 0x80 Invalid command in ST0, read it and trash it
+    getData();
+  }
+  
+  // no result phase - command understood and can be specified
+  else
+  {
+    sendData(0); // unused
+    sendData(3); // configure: implied seek off, FIFO on, with 4 bytes threshold
+    sendData(0); // starting track for write precompensation - unused, default
+    
+    m_specialFeatures |= SUPPORT_1MBPS;
+  }
+  
+  // 0x12 Perpendicular mode, same check as above
+  sendCommand(0x12);
+  while (!(readRegister(MSR) & 0x80)) {};
+  if ((readRegister(MSR) & 0xC0) == 0xC0)
+  {
+    getData();
+  }
+  
+  else
+  {
+    sendData(0x80); // command understood, all 4 drives initialized as normal for now
+    m_specialFeatures |= SUPPORT_PERPENDICULAR;
   }
   
   // if setActiveDrive was not called yet, return
@@ -545,7 +587,7 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
   // dataPosition: custom dataPos starting index (optional)
   // returns: bytes successfully read or written
    
-    // sanity checks
+  // sanity checks
   if (!m_params ||
       !startSector ||
       (startSector > endSector) ||
@@ -594,7 +636,10 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
     dataPos = dataPosition ? *dataPosition : 0;
     
     // set ISR to data transfer R/W
-    setInterrupt(writeOperation ? 4 : 2);
+    setInterrupt(writeOperation ? INTERRUPT_WRITE : INTERRUPT_READ);
+    
+    // set longitudinal or perpendicular mode
+    setRecordingMode();
        
     // 0x46 Read sector : 0x45 Write sector
     sendCommand(writeOperation ? 0x45 : 0x46);    
@@ -627,7 +672,7 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
     // track, head, sector number and size
     getData();
     getData();
-    getData();
+    m_currentSector = getData();
     getData();
     
     if (processIOResult(st0, st1, st2, endSector))
@@ -691,7 +736,10 @@ void FDC::formatTrack()
     
     // reset buffer position, set ISR to data transfer write
     dataPos = 0;
-    setInterrupt(4);
+    setInterrupt(INTERRUPT_WRITE);
+    
+    // set longitudinal or perpendicular mode
+    setRecordingMode();
           
     // 0x4D Format track
     sendCommand(0x4D);
@@ -765,7 +813,10 @@ WORD FDC::verifyTrack()
     
     // reset buffer position, set ISR to data verify
     dataPos = 0;
-    setInterrupt(3);
+    setInterrupt(INTERRUPT_VERIFY);
+    
+    // set longitudinal or perpendicular mode
+    setRecordingMode();
        
     // 0x46 Read sector
     sendCommand(0x46);
@@ -794,8 +845,8 @@ WORD FDC::verifyTrack()
     BYTE st2 = getData();
     
     getData();
-    getData();
-    getData();
+    getData(); 
+    m_currentSector = getData();
     getData();
     
     if (processIOResult(st0, st1, st2, m_params->SectorsPerTrack))
@@ -855,11 +906,10 @@ void FDC::setInterrupt(BYTE operation)
     return;
   }
 
-// the classic way: attachInterrupt to FDCACK, FDCREAD, FDCVERIFY, FDCWRITE
-#ifndef FDC_ISR_ASSEMBLY  
-  // changed, do detach before
+  // attachInterrupt to FDCACK, FDCREAD, FDCVERIFY, FDCWRITE
   if (intType != 0)
   {
+    // changed, do detach before
     detachInterrupt(digitalPinToInterrupt(2));  
   }
   
@@ -878,13 +928,6 @@ void FDC::setInterrupt(BYTE operation)
       attachInterrupt(digitalPinToInterrupt(2), FDCWRITE, RISING);
       break;    
   }
-#else
-  // one ISR in assembly: enable INT4
-  cli();
-  EICRB = (EICRB & ~((1 << ISC40) | (1 << ISC41))) | (RISING << ISC40);
-  EIMSK |= (1 << INT4);
-  sei();
-#endif  
   
   intType = operation;
 }
@@ -1046,9 +1089,8 @@ void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
   cli();
   motorOff();
   
-#ifndef FDC_ISR_ASSEMBLY
+  // reset interrupt handler
   detachInterrupt(2);
-#endif
   intType = 0;
 
   m_params = newParams;
@@ -1211,4 +1253,29 @@ void FDC::setAutomaticMotorOff(bool enabled)
   sei();
   
   previous = enabled;
+}
+
+// set normal (longitudinal) or perpendicular recording mode
+void FDC::setRecordingMode()
+{
+  // no command support?
+  if (!m_params || !(m_specialFeatures & SUPPORT_PERPENDICULAR))
+  {
+    return;
+  }
+  
+  // set overwrite flag on and normal recording mode by default for all drives
+  BYTE data = 0x80;
+    
+  // perpendicular recording support turned on by the FDC by adjusting GAP2 and WGATE
+  // setting valid for 500k (GAP, WGATE 01) and 1Mbps (GAP, WGATE 11) rates
+  if (m_params->PerpendicularRecording && (m_params->CommRate >= 500))
+  {
+    data |= (m_params->CommRate == 500) ? 1 : 3;
+    data |= (m_params->DriveNumber + 1) << 2; // affected drive number
+  }
+  
+  // 0x12 Perpendicular mode
+  sendCommand(0x12);
+  sendData(data);
 }
