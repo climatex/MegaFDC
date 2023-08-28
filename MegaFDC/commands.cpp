@@ -1720,10 +1720,14 @@ void CommandFORMAT(FDC::DiskDriveMediaParams* drive)
     ui->print(Progmem::getString(Progmem::uiEchoKey), key);
     makeFilesystem = key == 'Y';
     
-    // if writing filesystem, turn verify on and do not ask
+    // if writing filesystem, turn verify on and do not ask for input
     if (makeFilesystem)
     {
       withVerify = true;
+      
+      // inform about verify turned on
+      ui->print(Progmem::getString(Progmem::diskIoFormatVerify));
+      ui->print(Progmem::getString(Progmem::uiEchoKey), 'Y');
     }
   }
   

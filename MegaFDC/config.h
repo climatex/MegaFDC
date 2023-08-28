@@ -9,7 +9,8 @@
 /*
 
   Default pin assignments to a Mega2560 rev3 board
-  FDC board schematic see http://boginjr.com/electronics/lv/mega-fdc
+  FDC board schematic see http://boginjr.com/it/hw/megafdc/
+  PS/2 2.88MB support see http://boginjr.com/it/hw/ps2/
   
   optional AT/PS2 keyboard, pinout configurable
   Vcc, GND              (Vcc, GND)
