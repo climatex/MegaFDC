@@ -4,6 +4,17 @@
 #include "diskio.h"
 #include "..\..\config.h" // we
 
+// disk rwBuffer[0...511] is current 512B FAT sector data (FatFs operates in single sectors)
+// minimum SECTOR_BUFFER_SIZE is 1K to support 8" DSDD, so use the upper half for FAT file data window
+// FATFS::win still holds directory and FAT information
+BYTE* get_file_window()
+{
+  return &g_rwBuffer[512];
+}
+#if SECTOR_BUFFER_SIZE < 1024
+#error Minimum sector buffer size is 1K
+#endif
+
 DSTATUS disk_status(BYTE pdrv)
 { 
   // unused

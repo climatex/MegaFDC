@@ -31,7 +31,7 @@ typedef enum {
 /*---------------------------------------*/
 /* Prototypes for disk control functions */
 
-
+BYTE* get_file_window();
 DSTATUS disk_initialize (BYTE pdrv);
 DSTATUS disk_status (BYTE pdrv);
 DRESULT disk_read (BYTE pdrv, BYTE* buff, DWORD sector, UINT count);

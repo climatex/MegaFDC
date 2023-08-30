@@ -3867,7 +3867,8 @@ FRESULT f_open (
 			fp->fptr = 0;		/* Set file pointer top of the file */
 #if !FF_FS_READONLY
 #if !FF_FS_TINY
-			memset(fp->buf, 0, sizeof fp->buf);	/* Clear sector buffer */
+      fp->buf = get_file_window();
+			memset(fp->buf, 0, FF_MAX_SS);	/* Clear sector buffer */
 #endif
 			if ((mode & FA_SEEKEND) && fp->obj.objsize > 0) {	/* Seek to end of file if FA_OPEN_APPEND is specified */
 				fp->fptr = fp->obj.objsize;			/* Offset to seek */
@@ -3934,6 +3935,10 @@ FRESULT f_read (
 	if (!(fp->flag & FA_READ)) LEAVE_FF(fs, FR_DENIED); /* Check access mode */
 	remain = fp->obj.objsize - fp->fptr;
 	if (btr > remain) btr = (UINT)remain;		/* Truncate btr by remaining bytes */
+  
+#if !FF_FS_TINY
+  fp->buf = get_file_window();
+#endif
 
 	for ( ; btr > 0; btr -= rcnt, *br += rcnt, rbuff += rcnt, fp->fptr += rcnt) {	/* Repeat until btr bytes read */
 		if (fp->fptr % SS(fs) == 0) {			/* On the sector boundary? */
@@ -4036,6 +4041,10 @@ FRESULT f_write (
 	if ((!FF_FS_EXFAT || fs->fs_type != FS_EXFAT) && (DWORD)(fp->fptr + btw) < (DWORD)fp->fptr) {
 		btw = (UINT)(0xFFFFFFFF - (DWORD)fp->fptr);
 	}
+  
+#if !FF_FS_TINY
+  fp->buf = get_file_window();
+#endif
 
 	for ( ; btw > 0; btw -= wcnt, *bw += wcnt, wbuff += wcnt, fp->fptr += wcnt, fp->obj.objsize = (fp->fptr > fp->obj.objsize) ? fp->fptr : fp->obj.objsize) {	/* Repeat until all data written */
 		if (fp->fptr % SS(fs) == 0) {		/* On the sector boundary? */
@@ -4141,7 +4150,10 @@ FRESULT f_sync (
 	FATFS *fs;
 	DWORD tm;
 	BYTE *dir;
-
+  
+#if !FF_FS_TINY
+  fp->buf = get_file_window();
+#endif
 
 	res = validate(&fp->obj, &fs);	/* Check validity of the file object */
 	if (res == FR_OK) {
@@ -4445,6 +4457,10 @@ FRESULT f_lseek (
 	DWORD cl, pcl, ncl, tcl, tlen, ulen;
 	DWORD *tbl;
 	LBA_t dsc;
+#endif
+
+#if !FF_FS_TINY
+   fp->buf = get_file_window();
 #endif
 
 	res = validate(&fp->obj, &fs);		/* Check validity of the file object */
@@ -4917,7 +4933,10 @@ FRESULT f_truncate (
 	FRESULT res;
 	FATFS *fs;
 	DWORD ncl;
-
+  
+#if !FF_FS_TINY
+  fp->buf = get_file_window();
+#endif
 
 	res = validate(&fp->obj, &fs);	/* Check validity of the file object */
 	if (res != FR_OK || (res = (FRESULT)fp->err) != FR_OK) LEAVE_FF(fs, res);
@@ -5673,7 +5692,10 @@ FRESULT f_forward (
 	FSIZE_t remain;
 	UINT rcnt, csect;
 	BYTE *dbuf;
-
+  
+#if !FF_FS_TINY
+  fp->buf = get_file_window();
+#endif
 
 	*bf = 0;	/* Clear transfer byte counter */
 	res = validate(&fp->obj, &fs);		/* Check validity of the file object */
