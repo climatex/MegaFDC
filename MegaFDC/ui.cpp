@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // User interface
 
 #include "config.h"
@@ -66,6 +66,9 @@ Ui::Ui()
 // reset board
 void Ui::reset()
 {
+  // clear the screen
+  print("");
+  
   // de-selects the FDC lines and pulls its hardware RESET line high
   // this helps the controller to reinitialize after a sofware reset
   PORTC = 0x78;
@@ -379,7 +382,7 @@ BYTE Ui::readKey(const BYTE* allowedKeys, bool withWait)
 }
 
 // prompt for string with a maximum length if set; allowed keys (if not null) shall contain at least \r\b
-const BYTE* Ui::prompt(BYTE maximumPromptLen, const BYTE* allowedKeys)
+const BYTE* Ui::prompt(BYTE maximumPromptLen, const BYTE* allowedKeys, bool escReturnsNull)
 { 
   // buffer overflow check
   if (!maximumPromptLen || (maximumPromptLen > (sizeof(m_promptBuffer)-1)))
@@ -412,10 +415,17 @@ const BYTE* Ui::prompt(BYTE maximumPromptLen, const BYTE* allowedKeys)
     {
       break;
     }
-       
-    // escape - cancel out current command and make a newline
+      
+    // ESC, if allowed
     else if (chr == '\e')
     {
+      // return as if prompt canceled
+      if (escReturnsNull)
+      {
+        return NULL;
+      }
+      
+      // default: cancel out current command and make a newline (like in DOS)      
       while (index > 0)
       {
         m_promptBuffer[--index] = 0;

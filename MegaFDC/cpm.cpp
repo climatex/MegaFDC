@@ -1,8 +1,10 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // CP/M filesystem for 8" SSSD/FM (250K)
 // IBM 3740 single-sided geometry 77x26x128B
 
 #include "config.h"
+
+#ifndef BUILD_IMD_IMAGER
 
 #define DIRECTORY_SECTOR_START 52   // first two tracks reserved for BIOS and OS
 #define DIRECTORY_SECTORS      16   // 2K (16x128) of directory follows right after the reserved space
@@ -846,3 +848,4 @@ void cpmQuickFormat()
   return true;
 }
 
+#endif

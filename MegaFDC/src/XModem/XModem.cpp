@@ -29,43 +29,43 @@ const unsigned char XModem::STX =  2;
 const unsigned char XModem::EOT =  4;
 const unsigned char XModem::CAN =  0x18;
 
-const int XModem::receiveDelay=7000;
-const int XModem::rcvRetryLimit = 10;
+const int XModem::m_receiveDelay=7000;
+const int XModem::m_rcvRetryLimit = 10;
 
 
-XModem::XModem(int (*recvChar)(int msDelay),
-               void (*sendData)(const char *data, int len),
-               bool (*dataHandler)(unsigned long number, char *buffer, int len),
+XModem::XModem(int (*recvCharFn)(int msDelay),
+               void (*sendDataFn)(const char *data, int len),
+               bool (*dataHandlerFn)(unsigned long number, char *buffer, int len),
                bool XMODEM_1K)
 {
-	this->sendData = sendData;
-	this->recvChar = recvChar;
-	this->dataHandler = dataHandler;
+	sendData = sendDataFn;
+	recvChar = recvCharFn;
+	dataHandler = dataHandlerFn;
   
-  this->blockSize = XMODEM_1K ? 1024 : 128;    
-  this->buffer = new char[this->blockSize + 3 + 2]; // 3 head + 2 CRC
+  m_blockSize = XMODEM_1K ? 1024 : 128;    
+  m_buffer = new char[m_blockSize + 3 + 2]; // 3 head + 2 CRC
   
   // not enough memory for 1K?
-  if (!this->buffer)
+  if (!m_buffer)
   {
-    this->blockSize = 128;
-    this->buffer = new char[this->blockSize + 3 + 2];
+    m_blockSize = 128;
+    m_buffer = new char[m_blockSize + 3 + 2];
   }
 }
 
 XModem::~XModem()
 {
-  if (this->buffer)
+  if (m_buffer)
   {
-    delete[] this->buffer;
+    delete[] m_buffer;
   }
 }
 
 bool XModem::dataAvail(int delay)
 {
-	if (this->byte != -1)
+	if (m_byte != -1)
 		return true;
-	if ((this->byte = this->recvChar(delay)) != -1)
+	if ((m_byte = recvChar(delay)) != -1)
 		return true;
 	else
 		return false;
@@ -74,45 +74,45 @@ bool XModem::dataAvail(int delay)
 int XModem::dataRead(int delay)
 {
 	int b;
-	if(this->byte != -1)
+	if(m_byte != -1)
 	{
-		b = this->byte;
-		this->byte = -1;
+		b = m_byte;
+		m_byte = -1;
 		return b;
 	}
-	return this->recvChar(delay);
+	return recvChar(delay);
 }
 void XModem::dataWrite(char symbol)
 {
-  this->sendData(&symbol, 1);
+  sendData(&symbol, 1);
 }
 bool XModem::receiveFrameNo()
 {
 	unsigned char num = 
-		(unsigned char)this->dataRead(XModem::receiveDelay);
+		(unsigned char)dataRead(XModem::m_receiveDelay);
 	unsigned char invnum = 
-		(unsigned char)this->dataRead(XModem::receiveDelay);
-	this->repeatedBlock = false;
+		(unsigned char)dataRead(XModem::m_receiveDelay);
+	m_repeatedBlock = false;
 	//check for repeated block
-	if (invnum == (255-num) && num == this->blockNo-1) {
-		this->repeatedBlock = true;
+	if (invnum == (255-num) && num == m_blockNo-1) {
+		m_repeatedBlock = true;
 		return true;	
 	}
 	
-	if(num != this-> blockNo || invnum != (255-num))
+	if(num !=  m_blockNo || invnum != (255-num))
 		return false;
 	else
 		return true;
 }
 bool XModem::receiveData()
 {
-	if (!this->buffer)
+	if (!m_buffer)
     return false;
   
-  for(int i = 0; i < this->blockSize; i++) {
-		int byte = this->dataRead(XModem::receiveDelay);
+  for(int i = 0; i < m_blockSize; i++) {
+		int byte = dataRead(XModem::m_receiveDelay);
 		if(byte != -1)
-			this->buffer[i] = (unsigned char)byte;
+			m_buffer[i] = (unsigned char)byte;
 		else
 			return false;
 	}
@@ -120,14 +120,14 @@ bool XModem::receiveData()
 }
 bool XModem::checkCrc()
 {
-  if (!this->buffer)
+  if (!m_buffer)
     return false;
-  unsigned short frame_crc = ((unsigned char)this->
-				dataRead(XModem::receiveDelay)) << 8;
+  unsigned short frame_crc = ((unsigned char)
+				dataRead(XModem::m_receiveDelay)) << 8;
 	
-	frame_crc |= (unsigned char)this->dataRead(XModem::receiveDelay);
+	frame_crc |= (unsigned char)dataRead(XModem::m_receiveDelay);
 	//now calculate crc on data
-	unsigned short crc = this->crc16_ccitt(this->buffer, this->blockSize);
+	unsigned short crc = crc16_ccitt(m_buffer, m_blockSize);
 	
 	if(frame_crc != crc)
 		return false;
@@ -137,15 +137,15 @@ bool XModem::checkCrc()
 }
 bool XModem::checkChkSum()
 {
-  if (!this->buffer)
+  if (!m_buffer)
     return false;
-  unsigned char frame_chksum = (unsigned char)this->
-						dataRead(XModem::receiveDelay);
+  unsigned char frame_chksum = (unsigned char)
+						dataRead(XModem::m_receiveDelay);
 	//calculate chksum
 	unsigned char chksum = 0;
   
-	for(int i = 0; i< this->blockSize; i++) {
-		chksum += this->buffer[i];
+	for(int i = 0; i< m_blockSize; i++) {
+		chksum += m_buffer[i];
 	}
 	if(frame_chksum == chksum)
 		return true;
@@ -154,9 +154,9 @@ bool XModem::checkChkSum()
 }
 bool XModem::sendNack()
 {
-	this->dataWrite(XModem::NACK);	
-	this->retries++;
-	if(this->retries < XModem::rcvRetryLimit)
+	dataWrite(XModem::NACK);	
+	m_retries++;
+	if(m_retries < XModem::m_rcvRetryLimit)
 		return true;
 	else
 		return false;
@@ -164,84 +164,83 @@ bool XModem::sendNack()
 }
 bool XModem::receiveFrames(transfer_t transfer)
 {
- if (!this->buffer)
+ if (!m_buffer)
     return false;
   bool handlerOk = true;
-	this->blockNo = 1;
-	this->blockNoExt = 1;
-	this->retries = 0;
+	m_blockNo = 1;
+	m_blockNoExt = 1;
+	m_retries = 0;
 	while (1) {
-		char cmd = this->dataRead(1000);
+		char cmd = dataRead(1000);
 		switch(cmd){
 			case XModem::SOH:
       case XModem::STX:
-				if (!this->receiveFrameNo()) {
-					if (this->sendNack())
+				if (!receiveFrameNo()) {
+					if (sendNack())
 						break;
 					else
 						return false;
 				}
-				if (!this->receiveData()) {	
-					if (this->sendNack())
+				if (!receiveData()) {	
+					if (sendNack())
 						break;
 					else
 						return false;
 					
 				};
 				if (transfer == Crc) {
-					if (!this->checkCrc()) {
-						if (this->sendNack())
+					if (!checkCrc()) {
+						if (sendNack())
 							break;
 						else
 							return false;
 					}
 				} else {
-					if(!this->checkChkSum()) {
-						if (this->sendNack())
+					if(!checkChkSum()) {
+						if (sendNack())
 							break;
 						else
 							return false;
 					}
 				}
 				//callback
-				if(handlerOk && this->dataHandler != NULL && this->repeatedBlock == false)
-                                  handlerOk = this->dataHandler(this->blockNoExt, this->buffer, this->blockSize);
+				if(handlerOk && dataHandler != NULL && m_repeatedBlock == false)
+                                  handlerOk = dataHandler(m_blockNoExt, m_buffer, m_blockSize);
 				//ack
                                 if( handlerOk )
                                   {
-                                    this->dataWrite(XModem::ACK);
-                                    if(this->repeatedBlock == false)
+                                    dataWrite(XModem::ACK);
+                                    if(m_repeatedBlock == false)
                                       {
-					this->blockNo++;
-					this->blockNoExt++;
+					m_blockNo++;
+					m_blockNoExt++;
                                       }
-                                    this->retries = 0;
+                                    m_retries = 0;
                                   }
-                                else if( !this->sendNack() )
-                                  return false;
+                                else { dataWrite(XModem::CAN); dataWrite(XModem::CAN); dataWrite(XModem::CAN); return true; }
 
 				break;
 			case XModem::EOT:
-				this->dataWrite(XModem::ACK);
+				dataWrite(XModem::ACK);
 				return true;
 			case XModem::CAN:
 				//wait second CAN
-				if(this->dataRead(XModem::receiveDelay) ==
+				if(dataRead(XModem::m_receiveDelay) ==
 						XModem::CAN) {
-					this->dataWrite(XModem::ACK);
-					//this->flushInput();
+					dataWrite(XModem::ACK);
+					//flushInput();
 					return false;
 				}
 				//something wrong
-				this->dataWrite(XModem::CAN);
-				this->dataWrite(XModem::CAN);
-				this->dataWrite(XModem::CAN);
+				dataWrite(XModem::CAN);
+				dataWrite(XModem::CAN);
+				dataWrite(XModem::CAN);
 				return false;
 			default:
 				//something wrong
-				this->dataWrite(XModem::CAN);
-				this->dataWrite(XModem::CAN);
-				this->dataWrite(XModem::CAN);
+				dataWrite(XModem::CAN);
+				dataWrite(XModem::CAN);
+				dataWrite(XModem::CAN);
 				return false;
 		}
 		
@@ -249,24 +248,24 @@ bool XModem::receiveFrames(transfer_t transfer)
 }
 void XModem::init()
 {
-	//set preread byte  	
-	this->byte = -1;
+	//set preread m_byte  	
+	m_byte = -1;
 }
 bool XModem::receive()
 {
-	this->init();
+	init();
 	
-	for (int i =0; i <  this->blockSize; i++)
+	for (int i =0; i <  m_blockSize; i++)
 	{
-		this->dataWrite('C');	
-		if (this->dataAvail(1000)) 
+		dataWrite('C');	
+		if (dataAvail(1000)) 
 			return receiveFrames(Crc);
 	
 	}
-	for (int i =0; i <  this->blockSize; i++)
+	for (int i =0; i <  m_blockSize; i++)
 	{
-		this->dataWrite(XModem::NACK);	
-		if (this->dataAvail(1000)) 
+		dataWrite(XModem::NACK);	
+		if (dataAvail(1000)) 
 			return receiveFrames(ChkSum);
 	}
   return false;
@@ -298,25 +297,25 @@ unsigned char XModem::generateChkSum(const char *buf, int len)
 
 bool XModem::transmitFrames(transfer_t transfer)
 {
-  if (!this->buffer)
+  if (!m_buffer)
     return false;
-  this->blockNo = 1;
-	this->blockNoExt = 1;
+  m_blockNo = 1;
+	m_blockNoExt = 1;
 	// use this only in unit tetsing
-	//memset(this->buffer, 'A', this->blockSize);
+	//memset(m_buffer, 'A', m_blockSize);
 	while(1)
 	{
 		//get data
-		if (this->dataHandler != NULL)
+		if (dataHandler != NULL)
 		{
 			if( false == 
-			    this->dataHandler(this->blockNoExt, this->buffer+3, 
-			    this->blockSize))
+			    dataHandler(m_blockNoExt, m_buffer+3, 
+			    m_blockSize))
 			{
 				//end of transfer
-				this->dataWrite(XModem::EOT);
+				dataWrite(XModem::EOT);
 				//wait ACK
-				if (this->dataRead(XModem::receiveDelay) == 
+				if (dataRead(XModem::m_receiveDelay) == 
 					XModem::ACK)
 					return true;
 				else
@@ -328,41 +327,41 @@ bool XModem::transmitFrames(transfer_t transfer)
 		else
 		{
 			//cancel transfer - send CAN twice
-			this->dataWrite(XModem::CAN);
-			this->dataWrite(XModem::CAN);
+			dataWrite(XModem::CAN);
+			dataWrite(XModem::CAN);
 			//wait ACK
-			if (this->dataRead(XModem::receiveDelay) == 
+			if (dataRead(XModem::m_receiveDelay) == 
 				XModem::ACK)
 				return true;
 			else
 				return false;
 		}
 		//SOH / STX
-    buffer[0] = (this->blockSize == 1024) ? XModem::STX : XModem::SOH;
+    m_buffer[0] = (m_blockSize == 1024) ? XModem::STX : XModem::SOH;
 		//frame number
-		buffer[1] = this->blockNo;
+		m_buffer[1] = m_blockNo;
 		//inv frame number
-		buffer[2] = (unsigned char)(255-(this->blockNo));
+		m_buffer[2] = (unsigned char)(255-(m_blockNo));
 		//(data is already in buffer starting at byte 3)
 		//checksum or crc
 		if (transfer == ChkSum) {
-                  buffer[3+this->blockSize] = this->generateChkSum(buffer+3, this->blockSize);
-                  this->sendData(buffer, 3+this->blockSize+1);
+                  m_buffer[3+m_blockSize] = generateChkSum(m_buffer+3, m_blockSize);
+                  sendData(m_buffer, 3+m_blockSize+1);
 		} else {
                   unsigned short crc;
-                  crc = this->crc16_ccitt(this->buffer+3, this->blockSize);
-                  buffer[3+this->blockSize+0] = (unsigned char)(crc >> 8);
-                  buffer[3+this->blockSize+1] = (unsigned char)(crc);;
-                  this->sendData(buffer, 3+this->blockSize+2);
+                  crc = crc16_ccitt(m_buffer+3, m_blockSize);
+                  m_buffer[3+m_blockSize+0] = (unsigned char)(crc >> 8);
+                  m_buffer[3+m_blockSize+1] = (unsigned char)(crc);;
+                  sendData(m_buffer, 3+m_blockSize+2);
 		}
 
 		//TO DO - wait NACK or CAN or ACK
-		int ret = this->dataRead(XModem::receiveDelay);
+		int ret = dataRead(XModem::m_receiveDelay);
 		switch(ret)
 		{
 			case XModem::ACK: //data is ok - go to next chunk
-				this->blockNo++;
-				this->blockNoExt++;
+				m_blockNo++;
+				m_blockNoExt++;
 				continue;
 			case XModem::NACK: //resend data
 				continue;
@@ -378,18 +377,18 @@ bool XModem::transmit()
 {
 	int retry = 0;
 	int sym;
-	this->init();
+	init();
 	
 	//wait for CRC transfer
 	while(retry < 256)
 	{
-		if(this->dataAvail(1000))
+		if(dataAvail(1000))
 		{
-			sym = this->dataRead(1); //data is here - no delay
+			sym = dataRead(1); //data is here - no delay
 			if(sym == 'C')	
-				return this->transmitFrames(Crc);
+				return transmitFrames(Crc);
 			if(sym == XModem::NACK)
-				return this->transmitFrames(ChkSum);
+				return transmitFrames(ChkSum);
 		}
 		retry++;
 	}	

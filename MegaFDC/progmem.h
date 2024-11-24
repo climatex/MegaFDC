@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // Program memory data
 
 #pragma once
@@ -22,6 +22,7 @@ public:
     uiEnterKey,
     uiVT100ClearScreen,
     uiOK,
+    uiFAIL,
     uiEnabled,
     uiDisabled,
     uiYes,
@@ -39,7 +40,8 @@ public:
     
     // startup related   
     uiSplash,
-    uiWaitingForDrives,
+    uiBuild,
+    uiInitializingFDC,
     uiDisabled1,
     uiDisabled2,
     uiFatalError,
@@ -62,7 +64,12 @@ public:
     errChsFmtSTRegsSingle,
     errChsFmtSTRegsMulti,
     errChsFmtSingleSector,
-    errChsFmtMultiSector,        
+    errChsFmtMultiSector,
+    errTrack0Error,
+    errTryFormat,
+	
+    // MegaFDC command line
+#ifndef BUILD_IMD_IMAGER        
     
     // generic user commands
     cmdHelp,
@@ -139,7 +146,7 @@ public:
     helpXfer2,
     
     // startup command: initialize drives
-    initializingFDC,
+    waitingForDrives,
     countDrives,
     specifyParams1,
     specifyParams2,
@@ -240,9 +247,7 @@ public:
     diskIoInsertDisk, 
     diskIoTotalBadSect,
     diskIoTotalBadTrk,
-    diskIoProgress,
-    diskIoTrack0Error,
-    diskIoTryFormat,
+    diskIoProgress,    
     diskIoQuickFormat,
     diskIoCreatingFAT,
     diskIoCreatingCPM,
@@ -296,8 +301,111 @@ public:
     fsCPMFileNotFound,
     fsCPMFileEmpty,
     fsCPMNoFilesFound
+       
+    // IMD imager
+#else
+    imdSplash,
+    imdLCDRecommended,
+    imdDriveLetter,
+    imdDriveType,
+    imdDriveTracks,
+    imdDoubleStepAuto,
+    imdDoubleStep,
+    imdDiskSidesAuto,
+    imdDiskSides,
+    imdInterleave,
+    imdSectorGap,
+    imdFormatGap,
+    imdAdvancedDetails,
+    imdDefaultsNo,
+    imdXlate300kbps,
+    imdSpecifyOptions,
+    imdSpecifyOptions2,
+    imdEscGoBack,
     
-    // 6 strings left for a BYTE-indexed stringtable :-)
+    imdInsertGoodDisk,
+    imdInsertWriteDisk,
+    imdInsertFormat,
+    imdInsertErase, 
+    imdInsertRead,
+    imdInsertWrite,
+    imdNoteTestWrite,
+    imdNoteNoFS,
+    imdMemoryError,
+
+    imdOptionRead,
+    imdOptionWrite,
+    imdOptionFormat,
+    imdOptionErase, 
+    imdOptionTests,
+    imdOptionXlat,
+    imdOptionReset,
+    
+    imdTestFDC,
+    imdTestDrive,
+    imdTestSkipped,
+    imdTestController,
+    imdTestHD, 
+    imdTestED,
+    imdTest8inch,    
+    imdTestMFM128,
+    imdTestMedia,
+    imdTestDriveSeek,
+    imdTestRPM,
+    imdRPM,
+    imdDiskReadFail,
+    imdSyncSectorFail,
+    
+    imdGeoCylsHdStep,
+    imdSingleStepping,
+    imdDoubleStepping,
+    imdInterleaveGaps,
+    imdGeoGapSizesAuto,
+    imdGeoGapSizesUser,
+    imdGeoChsSpt,
+    imdGeoRateGap3,
+    imdProgress,
+    
+    imdUseSameParams,
+    imdFormatParams,
+    imdFormatSpt,
+    imdFormatEncoding,
+    imdFormatRate,
+    imdFormatRatesMFM,
+    imdFormatRatesFM,
+    imdFormatSecSize1,
+    imdFormatSecSize2,
+    imdFormatSecSize3, 
+    imdBadSectorsDisk,
+    imdBadSectorsFile,
+    
+    imdXmodem,
+    imdXmodem1k,
+    imdXmodemUse1k,
+    imdXmodemSkipBad,
+    imdXmodemVerify,
+    imdXmodemWaitSend,
+    imdXmodemWaitRecv,
+    imdXmodemXferEnd,
+    imdXmodemXferFail,
+    imdXmodemErrPacket,
+    imdXmodemErrHeader,
+    imdXmodemErrMode,
+    imdXmodemErrTrack,
+    imdXmodemErrHead,
+    imdXmodemErrSpt,
+    imdXmodemErrSsize,
+    imdXmodemLowRAM,
+    imdXmodemErrData,
+    
+    imdWriteHeader,
+    imdWriteComment,
+    imdWriteDone,
+    imdWriteEnterEsc,
+    imdTrackUnreadable,
+    imdUnreadableTrks,
+    imdRunPython
+#endif
   };
   
   // retrieve string from progmem, buffer valid until next call
@@ -312,12 +420,20 @@ public:
   {
     return pgm_read_byte(&(m_keybXlatTable[keyb]));
   }
-  
+
+#ifndef BUILD_IMD_IMAGER
   // translate physical sector to CP/M sector, 1-based
   static const unsigned char cpmSkewSector(unsigned char sector)
   {
     return pgm_read_byte(&(m_cpmSkewTable[sector]));
   }
+#else
+  // index the IMD gaps table
+  static const unsigned char imdGapTable(unsigned char index)
+  {
+    return pgm_read_byte(&(m_imdGapTable[index]));
+  }
+#endif
 
 // messages (definition order does not matter here). Length max MAX_PROGMEM_STRING_LEN
 // variadics can be loaded only one at a time from PROGMEM,
@@ -332,6 +448,7 @@ private:
   PROGMEM_STR m_uiEnterKey[]         PROGMEM = "\r";
   PROGMEM_STR m_uiVT100ClearScreen[] PROGMEM = "\e[H\e[2J\r        \r";
   PROGMEM_STR m_uiOK[]               PROGMEM = "OK";
+  PROGMEM_STR m_uiFAIL[]             PROGMEM = "FAIL";
   PROGMEM_STR m_uiEnabled[]          PROGMEM = "enabled";
   PROGMEM_STR m_uiDisabled[]         PROGMEM = "disabled";
   PROGMEM_STR m_uiYes[]              PROGMEM = "yes";
@@ -348,8 +465,9 @@ private:
   PROGMEM_STR m_uiChooseOption[]     PROGMEM = "Choose: ";
   
 // startup related
-  PROGMEM_STR m_uiSplash[]           PROGMEM = "MegaFDC (c) 2023 J. Bogin\r\n\r\n";
-  PROGMEM_STR m_uiWaitingForDrives[] PROGMEM = "Starting MS-BOSS...\r\n\r\n"; // :-)
+  PROGMEM_STR m_uiSplash[]           PROGMEM = "MegaFDC (c) 2023-2024 J. Bogin\r\nRegular build, ";
+  PROGMEM_STR m_uiBuild[]            PROGMEM = "24 Nov 2024\r\n";
+  PROGMEM_STR m_uiInitializingFDC[]  PROGMEM = "\r\nInitializing controller...";
   PROGMEM_STR m_uiDisabled1[]        PROGMEM = "- LCD and keyboard not enabled -";
   PROGMEM_STR m_uiDisabled2[]        PROGMEM = "Use switch to enable, then reset";
   PROGMEM_STR m_uiFatalError[]       PROGMEM = "Fatal error:";
@@ -374,7 +492,13 @@ private:
   PROGMEM_STR m_chsFmtSTRegsSingle[] PROGMEM = "\rCHS %02d/%d/%02d ST0,1,2 %02x,%02x,%02x";
   PROGMEM_STR m_chsFmtSTRegsMulti[]  PROGMEM = "\rCHS %02d/%d/%02d-%02d:\r\nST0,1,2 %02x,%02x,%02x";
   PROGMEM_STR m_chsFmtSingleSector[] PROGMEM = "\rCHS %02d/%d/%02d ";
-  PROGMEM_STR m_chsFmtMultiSector[]  PROGMEM = "\rCHS %02d/%d/%02d-%02d ";  
+  PROGMEM_STR m_chsFmtMultiSector[]  PROGMEM = "\rCHS %02d/%d/%02d-%02d ";
+// verify track 0 command
+  PROGMEM_STR m_errTrack0Error[]     PROGMEM = "Bad Track0 or wrong drive setup";
+  PROGMEM_STR m_errTryFormat[]       PROGMEM = "Try low-level format first";
+  
+// MegaFDC command line
+#ifndef BUILD_IMD_IMAGER
   
 // user commands, these are printed out in stringTable[] order
   PROGMEM_STR m_cmdHelp[]            PROGMEM = "HELP"; //outside printed commands list, shown in invalid command message
@@ -450,8 +574,8 @@ private:
   PROGMEM_STR m_helpXfer1[]          PROGMEM = "Usage: XFER filename\r\n";
   PROGMEM_STR m_helpXfer2[]          PROGMEM = "File transfer over serial link.\r\n\r\n";
   
-// init drives command directly at startup 
-  PROGMEM_STR m_initializingFDC[]    PROGMEM = "Initializing controller...";
+// init drives command directly at startup
+  PROGMEM_STR m_waitingForDrives[]   PROGMEM = "Starting MS-BOSS...\r\n\r\n"; // :-)  
   PROGMEM_STR m_countDrives[]        PROGMEM = "Disk drives connected (1-4): ";
   PROGMEM_STR m_specifyParams1[]     PROGMEM = "Specify parameters for drive %c:\r\n";
   PROGMEM_STR m_specifyParams2[]     PROGMEM = "Press Esc now if non-standard.\r\n\r\n";
@@ -481,7 +605,7 @@ private:
   PROGMEM_STR m_customFormatGap3[]   PROGMEM = "Format gap (hex): ";
   PROGMEM_STR m_customFormatFiller[] PROGMEM = "Format fill byte (hex): ";
   PROGMEM_STR m_customEncoding[]     PROGMEM = "Data encoding (M)FM / (F)M: ";
-  PROGMEM_STR m_customDataRateSel[]  PROGMEM = "Select data rate:";
+  PROGMEM_STR m_customDataRateSel[]  PROGMEM = "Select media data rate:";
   PROGMEM_STR m_custom8InchEnc[]     PROGMEM = "(2)50kbps FM / (5)00kbps MFM: ";
   PROGMEM_STR m_custom5InchFM[]      PROGMEM = "(1)25 1(5)0 (2)50 kbps FM: ";
   PROGMEM_STR m_custom5InchMFM[]     PROGMEM = "(2)50 (3)00 (5)00 kbps MFM: ";
@@ -554,8 +678,6 @@ private:
   PROGMEM_STR m_diskIoTotalBadSect[] PROGMEM = "Total bad sectors: %u";
   PROGMEM_STR m_diskIoTotalBadTrk[]  PROGMEM = "Tracks with bad sectors: %u";
   PROGMEM_STR m_diskIoProgress[]     PROGMEM = "\rTrack: %02d Head: %d ";
-  PROGMEM_STR m_diskIoTrack0Error[]  PROGMEM = "Bad Track0 or wrong drive setup";
-  PROGMEM_STR m_diskIoTryFormat[]    PROGMEM = "Try low-level format first";
   PROGMEM_STR m_diskIoQuickFormat[]  PROGMEM = "Quick-format drive %c:? Y/N: ";
   PROGMEM_STR m_diskIoCreatingFAT[]  PROGMEM = "Creating FAT12 filesystem...";
   PROGMEM_STR m_diskIoCreatingCPM[]  PROGMEM = "Creating CP/M filesystem...";
@@ -610,17 +732,123 @@ private:
   PROGMEM_STR m_fsCPMFileEmpty[]     PROGMEM = "The file is empty";
   PROGMEM_STR m_fsCPMNoFilesFound[]  PROGMEM = "File not found for all users";
   
+  // IMD imager
+#else
+  PROGMEM_STR m_imdSplash[]          PROGMEM = "\rImageDisk build, ";
+  PROGMEM_STR m_imdLCDRecommended[]  PROGMEM = "LCD output recommended!\r\n";
+  PROGMEM_STR m_imdDriveLetter[]     PROGMEM = "Drive (A): (B): (C): (D): ";
+  PROGMEM_STR m_imdDriveType[]       PROGMEM = "Type (8)\" (5).25\" (3).5\": ";
+  PROGMEM_STR m_imdDriveTracks[]     PROGMEM = "Maximum tracks (1-100): ";  
+  PROGMEM_STR m_imdDoubleStepAuto[]  PROGMEM = "Double stepping? Y/N/Guess: ";
+  PROGMEM_STR m_imdDoubleStep[]      PROGMEM = "Drive double stepping? Y/N: ";
+  PROGMEM_STR m_imdDiskSidesAuto[]   PROGMEM = "Force single-sided? Y/N: ";
+  PROGMEM_STR m_imdDiskSides[]       PROGMEM = "How many sides? (1) or (2): ";
+  PROGMEM_STR m_imdInterleave[]      PROGMEM = "Format interleave (1: none): ";
+  PROGMEM_STR m_imdSectorGap[]       PROGMEM = "Sector gap (hex, 0: auto): ";
+  PROGMEM_STR m_imdFormatGap[]       PROGMEM = "Format gap (hex, 0: auto): ";
+  PROGMEM_STR m_imdAdvancedDetails[] PROGMEM = "More info at http://boginjr.com\r\n";
+  PROGMEM_STR m_imdDefaultsNo[]      PROGMEM = "Defaults: No\r\n\r\n";
+  PROGMEM_STR m_imdXlate300kbps[]    PROGMEM = "300 <> 250kbps translate Y/N: ";
+  PROGMEM_STR m_imdSpecifyOptions[]  PROGMEM = "Can't autodetect these options.\r\n";
+  PROGMEM_STR m_imdSpecifyOptions2[] PROGMEM = "Specify them to continue. Or,\r\n";
+  PROGMEM_STR m_imdEscGoBack[]       PROGMEM = "\rPress Esc to go back.\r\n\r\n";
+  
+  PROGMEM_STR m_imdInsertGoodDisk[]  PROGMEM = "Insert known good disk to read\r\n";
+  PROGMEM_STR m_imdInsertWriteDisk[] PROGMEM = "Insert floppy to test writes\r\n";
+  PROGMEM_STR m_imdInsertFormat[]    PROGMEM = "Insert floppy disk to format\r\n";
+  PROGMEM_STR m_imdInsertErase[]     PROGMEM = "Insert floppy disk to erase\r\n";
+  PROGMEM_STR m_imdInsertRead[]      PROGMEM = "Insert floppy disk to read\r\n";
+  PROGMEM_STR m_imdInsertWrite[]     PROGMEM = "Insert floppy disk to write\r\n";
+  PROGMEM_STR m_imdNoteTestWrite[]   PROGMEM = "NOTE: data will be destroyed\r\n";
+  PROGMEM_STR m_imdNoteNoFS[]        PROGMEM = "NOTE: won't create filesystem\r\n";
+  PROGMEM_STR m_imdMemoryError[]     PROGMEM = "Memory allocation error\r\n";
+  
+  PROGMEM_STR m_imdOptionRead[]      PROGMEM = "(R)ead disk into IMD image\r\n";
+  PROGMEM_STR m_imdOptionWrite[]     PROGMEM = "(W)rite disk from IMD image\r\n";
+  PROGMEM_STR m_imdOptionFormat[]    PROGMEM = "(F)ormat disk\r\n";
+  PROGMEM_STR m_imdOptionErase[]     PROGMEM = "(E)rase disk\r\n";
+  PROGMEM_STR m_imdOptionTests[]     PROGMEM = "(T)est FDC, drive seek and RPM\r\n";
+  PROGMEM_STR m_imdOptionXlat[]      PROGMEM = "(D)ata rate translations\r\n";
+  PROGMEM_STR m_imdOptionReset[]     PROGMEM = "(Q)uit and re-enter settings\r\n\r\n";
+  
+  PROGMEM_STR m_imdTestFDC[]         PROGMEM = "(F)loppy controller write test\r\n";
+  PROGMEM_STR m_imdTestDrive[]       PROGMEM = "(D)rive seek and RPM test\r\n";  
+  PROGMEM_STR m_imdTestSkipped[]     PROGMEM = "SKIP";
+  PROGMEM_STR m_imdTestController[]  PROGMEM = "Media data rate [geometry]:\r\n\r\n";
+  PROGMEM_STR m_imdTestHD[]          PROGMEM = "500kbps MFM [1.2MB HD]:   ";
+  PROGMEM_STR m_imdTestED[]          PROGMEM = "  1Mbps MFM [2.88MB ED]:  ";
+  PROGMEM_STR m_imdTest8inch[]       PROGMEM = "250kbps  FM [8\" 250K SD]: ";  
+  PROGMEM_STR m_imdTestMFM128[]      PROGMEM = "500kbps MFM [128B/sect.]: "; 
+  PROGMEM_STR m_imdTestMedia[]       PROGMEM = "Analyzing disk...";
+  PROGMEM_STR m_imdTestDriveSeek[]   PROGMEM = "Drive seek test...";
+  PROGMEM_STR m_imdTestRPM[]         PROGMEM = "Synchronizing...";
+  PROGMEM_STR m_imdRPM[]             PROGMEM = "RPM: %u   \r";
+  PROGMEM_STR m_imdDiskReadFail[]    PROGMEM = "\r\nNo sector IDs on disk";
+  PROGMEM_STR m_imdSyncSectorFail[]  PROGMEM = "\r\nCannot sync with disk";
+
+  PROGMEM_STR m_imdGeoCylsHdStep[]   PROGMEM = " max %u trk %u side";
+  PROGMEM_STR m_imdSingleStepping[]  PROGMEM = "Singlestep";
+  PROGMEM_STR m_imdDoubleStepping[]  PROGMEM = "Doublestep";
+  PROGMEM_STR m_imdInterleaveGaps[]  PROGMEM = "Interleave %u:1, gaps ";
+  PROGMEM_STR m_imdGeoGapSizesAuto[] PROGMEM = "automatic\r\n";
+  PROGMEM_STR m_imdGeoGapSizesUser[] PROGMEM = "custom\r\n";
+  PROGMEM_STR m_imdGeoChsSpt[]       PROGMEM = "CHS %02u/%u/%02ux%-4uB sect GAP 0x%02X\r\n";
+  PROGMEM_STR m_imdGeoRateGap3[]     PROGMEM = "Datarate %ukbps %3s, GAP3 0x%02X\r\n";
+  PROGMEM_STR m_imdProgress[]        PROGMEM = "\rTrack: %02u Head: %u ";
+
+  PROGMEM_STR m_imdUseSameParams[]   PROGMEM = "Same settings as before? Y/N: ";
+  PROGMEM_STR m_imdFormatParams[]    PROGMEM = "Format parameters (Esc quits):\r\n\r\n";
+  PROGMEM_STR m_imdFormatSpt[]       PROGMEM = "Sectors per track (1-63): ";
+  PROGMEM_STR m_imdFormatEncoding[]  PROGMEM = "Data encoding (M)FM / (F)M: ";  
+  PROGMEM_STR m_imdFormatRate[]      PROGMEM = "Select media data rate:\r\n";
+  PROGMEM_STR m_imdFormatRatesMFM[]  PROGMEM = "(2)50 (3)00 (5)00 kbps MFM: ";
+  PROGMEM_STR m_imdFormatRatesFM[]   PROGMEM = "(1)25 1(5)0 (2)50 kbps FM: ";
+  PROGMEM_STR m_imdFormatSecSize1[]  PROGMEM = "Select sector size:\r\n";
+  PROGMEM_STR m_imdFormatSecSize2[]  PROGMEM = "(1)28B (2)56B (5)12B 1(K)B,\r\n";
+  PROGMEM_STR m_imdFormatSecSize3[]  PROGMEM = "(L) 2KB, (M) 4KB, (N) 8KB: ";
+  PROGMEM_STR m_imdBadSectorsDisk[]  PROGMEM = "%u bad sector(s) on disk\r\n";
+  PROGMEM_STR m_imdBadSectorsFile[]  PROGMEM = "%u bad sector(s) in IMD file\r\n";
+  
+  PROGMEM_STR m_imdXmodem[]          PROGMEM = "XMODEM: ";
+  PROGMEM_STR m_imdXmodem1k[]        PROGMEM = "XMODEM-1K: ";
+  PROGMEM_STR m_imdXmodemUse1k[]     PROGMEM = "Use XMODEM-1K? Y/N: ";
+  PROGMEM_STR m_imdXmodemSkipBad[]   PROGMEM = "Skip sectors marked bad? Y/N: ";
+  PROGMEM_STR m_imdXmodemVerify[]    PROGMEM = "Rigorous verify? (SLOW!) Y/N: ";
+  PROGMEM_STR m_imdXmodemWaitSend[]  PROGMEM = "OK to launch Send\r\nTimeout 4 minutes\r\n";
+  PROGMEM_STR m_imdXmodemWaitRecv[]  PROGMEM = "OK to launch Receive\r\nTimeout 4 minutes\r\n";
+  PROGMEM_STR m_imdXmodemXferEnd[]   PROGMEM = "\rEnd of transfer\r\n";
+  PROGMEM_STR m_imdXmodemXferFail[]  PROGMEM = "\rTransfer aborted\r\n";
+  PROGMEM_STR m_imdXmodemErrPacket[] PROGMEM = "Invalid XMODEM data packet\r\n";
+  PROGMEM_STR m_imdXmodemErrHeader[] PROGMEM = "Invalid header in file\r\n";
+  PROGMEM_STR m_imdXmodemErrMode[]   PROGMEM = "IMD Mode byte must be 0-5\r\n";
+  PROGMEM_STR m_imdXmodemErrTrack[]  PROGMEM = "More tracks than configured\r\n";
+  PROGMEM_STR m_imdXmodemErrHead[]   PROGMEM = "Heads (sides) must be 0-1\r\n";
+  PROGMEM_STR m_imdXmodemErrSpt[]    PROGMEM = "Sectors per track must be <64\r\n";
+  PROGMEM_STR m_imdXmodemErrSsize[]  PROGMEM = "Sector size byte must be 0-6\r\n";
+  PROGMEM_STR m_imdXmodemLowRAM[]    PROGMEM = "Not enough RAM for %uK sectors\r\n";  
+  PROGMEM_STR m_imdXmodemErrData[]   PROGMEM = "Invalid data record type (0-8)\r\n";
+  
+  PROGMEM_STR m_imdWriteHeader[]     PROGMEM = "IMD file created by MegaFDC, (c) J. Bogin\r\n";
+  PROGMEM_STR m_imdWriteComment[]    PROGMEM = "Comment (max %u chars per line)\r\n";
+  PROGMEM_STR m_imdWriteDone[]       PROGMEM = "Type 2 empty newlines when done\r\n";
+  PROGMEM_STR m_imdWriteEnterEsc[]   PROGMEM = "ENTER: continue, Esc: skip...";
+  PROGMEM_STR m_imdTrackUnreadable[] PROGMEM = "Unreadable\r\n";
+  PROGMEM_STR m_imdUnreadableTrks[]  PROGMEM = "%u unreadable track(s)\r\n\r\n";
+  PROGMEM_STR m_imdRunPython[]       PROGMEM = "Run 'imdtrim.py' before using!\r\n";
+  
+#endif
+  
 // tables
 private:
 
   PROGMEM_STR* const m_stringTable[] PROGMEM = {  
                                                   m_uiDeleteLine, m_uiNewLine, m_uiNewLine2x, m_uiEchoKey, m_uiEnterKey,
-                                                  m_uiVT100ClearScreen, m_uiOK, m_uiEnabled, m_uiDisabled, m_uiYes,
+                                                  m_uiVT100ClearScreen, m_uiOK, m_uiFAIL, m_uiEnabled, m_uiDisabled, m_uiYes,
                                                   m_uiNo, m_uiNotAvailable, m_uiAbort, m_uiContinue, m_uiContinueAbort,
                                                   m_uiDecimalInput, m_uiHexadecimalInput, m_uiBytes, m_uiOperationPending,
                                                   m_uiCancelOption, m_uiChooseOption,
 
-                                                  m_uiSplash, m_uiWaitingForDrives, m_uiDisabled1, m_uiDisabled2,
+                                                  m_uiSplash, m_uiBuild, m_uiInitializingFDC, m_uiDisabled1, m_uiDisabled2,
                                                   m_uiFatalError, m_uiSystemHalted, m_uiCtrlAltDel, m_uiLoadingConfig,
                                                   m_uiLoadingAborted,
                                                   
@@ -628,7 +856,9 @@ private:
                                                   m_errINTTimeout, m_errOverrun, m_errCRC,  m_errNoData,
                                                   m_errNoAddrMark, m_errBadTrack, m_chsFmtSTRegsSingle,
                                                   m_chsFmtSTRegsMulti, m_chsFmtSingleSector, m_chsFmtMultiSector,
-                                                  
+                                                  m_errTrack0Error, m_errTryFormat,
+
+#ifndef BUILD_IMD_IMAGER
                                                   m_cmdHelp,                                                              
                                                   m_cmdSupportedIndex,
                                                   m_cmdReset, m_cmdDrivParm, m_cmdPersist, m_cmdFormat, m_cmdVerify, m_cmdImage,
@@ -651,7 +881,7 @@ private:
                                                   m_helpRd1, m_helpRd2, m_helpTypeInto1, m_helpTypeInto2, 
                                                   m_helpTypeInto3, m_helpXfer1, m_helpXfer2,
                                                   
-                                                  m_initializingFDC, m_countDrives, m_specifyParams1, m_specifyParams2, 
+                                                  m_waitingForDrives, m_countDrives, m_specifyParams1, m_specifyParams2, 
                                                   m_driveInches, m_drive8InchText1, m_drive8InchText2, m_drive8InchText3, 
                                                   m_drive8InchText4, m_drive8InchText5, m_drive8InchText6,
                                                   m_drive5InchSides, m_drive5InchSSDD, m_drive5Inch, 
@@ -681,8 +911,7 @@ private:
                                                   
                                                   m_diskIoFormatVerify, m_diskIoCreateFS, m_diskIoInsertDisk, 
                                                   m_diskIoTotalBadSect, m_diskIoTotalBadTrk, m_diskIoProgress,
-                                                  m_diskIoTrack0Error, m_diskIoTryFormat, m_diskIoQuickFormat,
-                                                  m_diskIoCreatingFAT, m_diskIoCreatingCPM, m_diskIoFormatOK,
+                                                  m_diskIoQuickFormat, m_diskIoCreatingFAT, m_diskIoCreatingCPM, m_diskIoFormatOK,
                                                   
                                                   m_xferReadFile, m_xferSaveFile, m_imageReadDisk, m_imageWriteDisk,
                                                   m_imageTransferLen, m_imageGeometry, m_xmodemUse1k, m_xmodemPrefix,
@@ -698,8 +927,40 @@ private:
                                                   m_fsInternalError, m_fsFileNotFound, m_fsPathNotFound, m_fsDirectoryFull,
                                                   m_fsFileExists, m_fsInvalidObject, m_fsNoVolumeWorkArea, m_fsMkfsError, m_fsNoFAT,
                                                   m_fsMemoryError, m_fsInvalidParameter, m_fsCPMFileNotFound, m_fsCPMFileEmpty,
-                                                  m_fsCPMNoFilesFound
-
+                                                  m_fsCPMNoFilesFound                                                  
+#else
+                                                  m_imdSplash, m_imdLCDRecommended, m_imdDriveLetter, m_imdDriveType, m_imdDriveTracks,
+                                                  m_imdDoubleStepAuto, m_imdDoubleStep, m_imdDiskSidesAuto, m_imdDiskSides, m_imdInterleave, 
+                                                  m_imdSectorGap, m_imdFormatGap, m_imdAdvancedDetails, m_imdDefaultsNo,
+                                                  m_imdXlate300kbps, m_imdSpecifyOptions, m_imdSpecifyOptions2, m_imdEscGoBack,
+                                                  
+                                                  m_imdInsertGoodDisk, m_imdInsertWriteDisk, m_imdInsertFormat, m_imdInsertErase, 
+                                                  m_imdInsertRead, m_imdInsertWrite, m_imdNoteTestWrite, m_imdNoteNoFS, m_imdMemoryError,
+  
+                                                  m_imdOptionRead, m_imdOptionWrite, m_imdOptionFormat, m_imdOptionErase, 
+                                                  m_imdOptionTests, m_imdOptionXlat, m_imdOptionReset,
+                                                  
+                                                  m_imdTestFDC, m_imdTestDrive, m_imdTestSkipped, m_imdTestController, m_imdTestHD, 
+                                                  m_imdTestED, m_imdTest8inch, m_imdTestMFM128, m_imdTestMedia, 
+                                                  m_imdTestDriveSeek, m_imdTestRPM, m_imdRPM, m_imdDiskReadFail, m_imdSyncSectorFail,
+                                                  
+                                                  m_imdGeoCylsHdStep, m_imdSingleStepping, m_imdDoubleStepping, m_imdInterleaveGaps,
+                                                  m_imdGeoGapSizesAuto, m_imdGeoGapSizesUser, m_imdGeoChsSpt, m_imdGeoRateGap3,
+                                                  m_imdProgress,
+                                                  
+                                                  m_imdUseSameParams, m_imdFormatParams, m_imdFormatSpt, m_imdFormatEncoding, m_imdFormatRate,
+                                                  m_imdFormatRatesMFM, m_imdFormatRatesFM, m_imdFormatSecSize1, m_imdFormatSecSize2, 
+                                                  m_imdFormatSecSize3, m_imdBadSectorsDisk, m_imdBadSectorsFile,
+                                                  
+                                                  m_imdXmodem, m_imdXmodem1k, m_imdXmodemUse1k, m_imdXmodemSkipBad, m_imdXmodemVerify, 
+                                                  m_imdXmodemWaitSend, m_imdXmodemWaitRecv, m_imdXmodemXferEnd, m_imdXmodemXferFail,                                                  
+                                                  m_imdXmodemErrPacket, m_imdXmodemErrHeader, m_imdXmodemErrMode, m_imdXmodemErrTrack, 
+                                                  m_imdXmodemErrHead, m_imdXmodemErrSpt, m_imdXmodemErrSsize, m_imdXmodemLowRAM,
+                                                  m_imdXmodemErrData,
+                                                  
+                                                  m_imdWriteHeader, m_imdWriteComment, m_imdWriteDone, m_imdWriteEnterEsc,
+                                                  m_imdTrackUnreadable, m_imdUnreadableTrks, m_imdRunPython
+#endif
                                                };
 
                                                   
@@ -728,12 +989,47 @@ private:
                                                   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                   0, 0, 0, 0 
                                                };
-                                               
+                                           
+#ifndef BUILD_IMD_IMAGER
   // 8" SSSD 26-sector skew (interleave) table
   PROGMEM_STR m_cpmSkewTable[]       PROGMEM = {  0, // 1-based
                                                   1, 7, 13, 19, 25, 5, 11, 17, 23, 3, 9,  15, 21,
                                                   2, 8, 14, 20, 26, 6, 12, 18, 24, 4, 10, 16, 22
                                                };
+#else
+  // known sector and format gaps to IMD
+  // each group of four values: sector size N, number of sectors, sector gap, format gap
+  // table must end with 0xFF
+	PROGMEM_STR m_imdGapTable[]        PROGMEM = {	0x00, 0x1A, 0x07, 0x1B,	// 8" FM
+                                                  0x01, 0x0F, 0x0E, 0x2A,
+                                                  0x02, 0x08, 0x1B, 0x3A,
+                                                  0x03, 0x04, 0x47, 0x8A,
+                                                  0x04, 0x02, 0xC8, 0xFF,
+                                                  0x05, 0x01, 0xC8, 0xFF,
+                                                  0x01, 0x1A, 0x0E, 0x36,	// 8" MFM
+                                                  0x02, 0x0F, 0x1B, 0x54,
+                                                  0x03, 0x08, 0x35, 0x74,
+                                                  0x04, 0x04, 0x99, 0xFF,
+                                                  0x05, 0x02, 0xC8, 0xFF,
+                                                  0x06, 0x01, 0xC8, 0xFF,
+                                                  0x00, 0x12, 0x07, 0x09,	// 5" FM
+                                                  0x00, 0x10, 0x10, 0x19,
+                                                  0x01, 0x08, 0x18, 0x30,
+                                                  0x02, 0x04, 0x46, 0x87,
+                                                  0x03, 0x02, 0xC8, 0xFF,
+                                                  0x04, 0x01, 0xC8, 0xFF,
+                                                  0x01, 0x12, 0x0A, 0x0C,	// 5" MFM
+                                                  0x01, 0x10, 0x20, 0x32,
+                                                  0x02, 0x08, 0x2A, 0x50,
+                                                  0x02, 0x09, 0x18, 0x40,
+                                                  0x02, 0x0A, 0x07, 0x0E,
+                                                  0x03, 0x04, 0x8D, 0xF0,
+                                                  0x04, 0x02, 0xC8, 0xFF,
+                                                  0x05, 0x01, 0xC8, 0xFF,
+                                                  0x02, 0x12, 0x1B, 0x54,	// 1.4MB 3.5
+                                                  0xFF
+                                               };
+#endif
 
 // provides for transfering messages between program space and our address space
 // even though we're in class Progmem, this is in RAM, not in PROGMEM itself

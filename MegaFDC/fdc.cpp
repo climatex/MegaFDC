@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // Floppy disk controller interface
 // Software compatible with a NEC uPD765 or any other PC FDC
 
@@ -51,11 +51,13 @@ FDC::FDC()
   m_diskWriteProtected = false;
   m_diskChangeInquired = false;
   m_idle = true;
+  m_silentOnTrivialError = false;
+  m_controlMark = false;
   
   // no special features support determined yet
   m_specialFeatures = 0;
    
-  // current CHS values
+  // current physical CHS values
   m_currentTrack = 0;
   m_currentHead = 0;
   m_currentSector = 1;  
@@ -105,18 +107,15 @@ FDC::FDC()
 BYTE FDC::getData()
 {  
   //read data from FDC DTR with handshaking and timeout
-  WORD timeout = IO_TIMEOUT;
+  DWORD timeout = IO_TIMEOUT;
   
-  while (timeout)
+  while (--timeout)
   {
     // inspect main status register, receive byte only if RQM=1 and direction is FDC->AVR
     if ((readRegister(MSR) & 0xC0) == 0xC0)
     {
       return readRegister(DTR);
     }
-    
-    timeout--;
-    DELAY_MS(1);
   }
   
   // no picture, no sound
@@ -129,9 +128,9 @@ BYTE FDC::getData()
 void FDC::sendData(BYTE data)
 {  
   //send data to FDC DTR with handshaking and timeout
-  WORD timeout = IO_TIMEOUT;
+  DWORD timeout = IO_TIMEOUT;
   
-  while (timeout) 
+  while (--timeout)  
   {
     // send byte only if RQM=1 and direction is AVR->FDC
     if ((readRegister(MSR) & 0xC0) == 0x80)
@@ -139,9 +138,6 @@ void FDC::sendData(BYTE data)
       writeRegister(DTR, data);
       return;
     }
-    
-    timeout--;
-    DELAY_MS(1);
   }
   
   // same as above
@@ -152,9 +148,9 @@ void FDC::sendData(BYTE data)
 // waits until interrupt from FDC
 void FDC::waitForINT()
 {
-  WORD timeout = IO_TIMEOUT;
+  DWORD timeout = IO_TIMEOUT;
 
-  while (timeout)
+  while (--timeout)
   {
     if (intFired)
     {
@@ -163,9 +159,6 @@ void FDC::waitForINT()
       m_lastError = false;
       return;        
     }
-
-    timeout--;
-    DELAY_MS(1);
   }
   
   // the FDC is deaf as a post
@@ -176,18 +169,15 @@ void FDC::waitForINT()
 // similar to waitForINT; allows continuing after timeout
 bool FDC::waitForDATA()
 {
-  WORD timeout = IO_TIMEOUT; 
+  DWORD timeout = IO_TIMEOUT;
   
-  while(timeout)
+  while(--timeout)
   {
     if (intFired)
     {   
       intFired = 0; //reset flag
       return true;
     }
-    
-    timeout--;
-    DELAY_MS(1);
   }
     
   return false;
@@ -212,7 +202,7 @@ void FDC::resetController()
   
   // reset interrupt handler
   cli();
-  detachInterrupt(2);
+  detachInterrupt(digitalPinToInterrupt(2));
   intType = 0;
   setInterrupt();
   sei();
@@ -289,7 +279,16 @@ void FDC::resetController()
     return;
   }
   
-  // set communication (data) rate in kbps
+  // set FDC communication rate and stepper motor timings
+  setCommunicationRate();
+  
+  // recalibrate command required to initialize disk operations
+  m_idle = true;
+}
+
+void FDC::setCommunicationRate()
+{
+  // set FDC communication rate in kbit/s, this also adjusts drive timings
   if (m_params->CommRate == 300)
   {
     writeRegister(DRR, 1);
@@ -302,84 +301,77 @@ void FDC::resetController()
   {
     writeRegister(DRR, 3);
   }
-  else // 500
+  else if (m_params->CommRate == 500)
   {
     writeRegister(DRR, 0);
-  }  
-
-  // execute FDC command 0x3 - Specify
-  // values per https://www.isdaman.com/alsos/hardware/fdc/floppy.htm
-  sendCommand(3);
+  }
   
+  // step rate time (SRT): 8": 10ms, 5.25": 8ms, 3.5": 4ms
+  if (m_params->DriveInches == 8)
+  {
+     // the highest for 1Mbps is 8ms but I've never seen an 8" operate at that rate
+    m_params->SRT = (m_params->CommRate < 1000) ? 10 : 8;
+  }  
+  else if (m_params->DriveInches == 5)
+  {
+    m_params->SRT = 8;
+  }
+  else if (m_params->DriveInches == 3)
+  {
+    m_params->SRT = 4;
+  }
+  
+  // head load time (HLT): 16ms (250k, 500k, 1M rates), 16.67ms (300kbps)
+  // head unload time (HUT): 224ms (250k, 500k rates), 240ms (300kbps), 127ms (1Mbps)
+  switch(m_params->CommRate)
+  {
+  case 250:
+  case 500:
+    m_params->HLT = 16;
+    m_params->HUT = 224;
+    break;
+  case 300:
+    m_params->HLT = 17;
+    m_params->HUT = 240;
+    break;
+  case 1000:
+    m_params->HLT = 16;
+    m_params->HUT = 127;
+  }
+  
+  // prepare data for FDC command 0x3 - Specify - values are data rate dependent
   // first byte is SRT (upper nibble) | HUT (lower nibble)
   // second byte is HLT (bits 7-1) | non-DMA mode flag (bit 0)
   // non-DMA mode: 1 (no DMA in classic Arduino)
-   
-  // 8" drives (FDC comm rate always 500K, MFM or FM):
-  // 8ms SRT, 256ms head load, 256ms unload time
-  if (m_params->DriveInches == 8)
-  {
-    m_params->SRT = 8; m_params->HLT = 256; m_params->HUT = 256;
-    sendData(0x80);
-    sendData(1);
-  }  
+  // see https://www.isdaman.com/alsos/hardware/fdc/floppy.htm
+  BYTE srtHut = 0;
+  BYTE hltNonDMA = 0;
   
-  // 5.25" drives (comm rate 250K DD, 500K HD, 300K DD disk in HD drive; always MFM)
-  // timings depend on comm rate
-  // 6ms SRT, 64ms head load, 256ms unload time DD & HD
-  else if (m_params->DriveInches == 5)
+  if (m_params->CommRate == 250)
   {
-    if (m_params->CommRate == 250)
-    {
-      m_params->SRT = 6; m_params->HLT = 64; m_params->HUT = 256;
-      sendData(0xD8);
-      sendData(0x21);
-    }
-    
-    // 6.67ms SRT, 63.3ms head load, 266.67ms unload time if DD in HD drive
-    else if (m_params->CommRate == 300)
-    {
-      m_params->SRT = 7; m_params->HLT = 63; m_params->HUT = 267;
-      sendData(0xCA);
-      sendData(0x27);
-    }
-    
-    else // 500
-    {
-      m_params->SRT = 6; m_params->HLT = 64; m_params->HUT = 256;
-      sendData(0xA0);
-      sendData(0x41);
-    }
+    srtHut = (((32 - m_params->SRT) / 2) << 4) | (m_params->HUT / 32);
+    hltNonDMA = ((m_params->HLT / 4) << 1) | 1;
+  }
+  else if (m_params->CommRate == 300)
+  {
+    srtHut = (((2672 - ((WORD)m_params->SRT * 100)) / 167) << 4) | ((m_params->HUT * 3) / 80);
+    hltNonDMA = (((m_params->HLT * 3) / 10) << 1) | 1;
+  }
+  else if (m_params->CommRate == 500)
+  {
+    srtHut = ((16 - m_params->SRT) << 4) | (m_params->HUT / 16);
+    hltNonDMA = ((m_params->HLT / 2) << 1) | 1;
+  }
+  else if (m_params->CommRate == 1000)
+  {
+    srtHut = ((16 - (m_params->SRT * 2)) << 4) | (m_params->HUT / 8);
+    hltNonDMA = (m_params->HLT << 1) | 1;
   }
   
-  // 3.5" drives (comm rate 250K DD, 500K HD, 1M ED, always MFM)
-  // 4ms SRT, 32ms head load, 256ms unload time (except 1Mbps: 128ms HUT)
-  else
-  {
-    if (m_params->CommRate == 250)
-    {
-      m_params->SRT = 4; m_params->HLT = 32; m_params->HUT = 256;
-      sendData(0xE8);
-      sendData(0x11);
-    }
-    
-    else if (m_params->CommRate == 1000)
-    {
-      m_params->SRT = 4; m_params->HLT = 32; m_params->HUT = 128;
-      sendData(0x80);
-      sendData(0x41);
-    }
-
-    else // 500
-    {
-      m_params->SRT = 4; m_params->HLT = 32; m_params->HUT = 256;
-      sendData(0xC0);
-      sendData(0x21);
-    }
-  }
-  
-  // recalibrate command required to initialize disk operations
-  m_idle = true;
+  // 0x3 Specify
+  sendCommand(3);
+  sendData(srtHut);
+  sendData(hltNonDMA);
 }
 
 void FDC::recalibrateDrive()
@@ -500,7 +492,7 @@ void FDC::seekDrive(BYTE track, BYTE head)
     recalibrateDrive();
   }
   
-  // seek heads to given track (cylinder) and select head (disk side)
+  // seek the drive heads carriage to given physical track (cylinder) and select head (disk side)
   m_idle = false;
   motorOn();
   setInterrupt();
@@ -578,13 +570,15 @@ void FDC::seekDrive(BYTE track, BYTE head)
   fatalError(Progmem::errSeek);
 }
 
-WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector, WORD* dataPosition)
+WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector, WORD* dataPosition, bool deleted, BYTE* overrideTrack, BYTE* overrideHead)
 {
   // reads/writes chosen sector off current track and head to/from ioBuffer
   // writeOperation false: read, true: write
   // startSector: initial sector number (1-based)
   // endSector: ending sector number (1-based) or getMaximumSectorCountForRW() for maximum possible
   // dataPosition: custom dataPos starting index (optional)
+  // deleted: read or write deleted data mark (optional, false by default)
+  // overrideTrack, overrideHead: logical sector information differs from what's in the current physical track (non-standard disks)
   // returns: bytes successfully read or written
    
   // sanity checks
@@ -640,14 +634,32 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
     
     // set longitudinal or perpendicular mode
     setRecordingMode();
-       
-    // 0x46 Read sector : 0x45 Write sector
-    sendCommand(writeOperation ? 0x45 : 0x46);    
-    sendData((m_currentHead << 2) | m_params->DriveNumber); // head and drive
-    sendData(m_currentTrack); // current track
-    sendData(m_currentHead); // head again
+    
+    // supplied track or head number differs from the physical we're currently at?
+    BYTE currentTrack = m_currentTrack;
+    BYTE currentHead = m_currentHead;
+    if (overrideTrack)
+    {
+      currentTrack = *overrideTrack;
+    }
+    if (overrideHead)
+    {
+      currentHead = *overrideHead;
+    }
+    
+    // 0x46 Read data : 0x45 Write data
+    BYTE command = writeOperation ? 0x45 : 0x46;
+    if (deleted)
+    {
+      // 0x4C Read deleted data : 0x49 Write deleted data
+      command = writeOperation ? 0x49 : 0x4C;
+    }
+    sendCommand(command);
+    sendData((m_currentHead << 2) | m_params->DriveNumber); // physical head and drive
+    sendData(currentTrack); // logical track
+    sendData(currentHead); // logical head
     sendData(startSector); // which sector to read
-    sendData(convertSectorSize(m_params->SectorSizeBytes));  // sector size 0 to 3, 128B to 1024B
+    sendData(convertSectorSize(m_params->SectorSizeBytes));  // sector size 0 to 5, 128B to 4096B
     sendData(endSector); // which ending sector
     sendData(m_params->GapLength); // gap length
     sendData((m_params->SectorSizeBytes == 128) ? 0x80 : 0xFF); // data transfer length
@@ -690,29 +702,79 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
   // operation failed, return 0 bytes - last error already in print buffer from processIOResult
   m_idle = true;
   m_lastError = true;
-  ui->print(ui->getPrintBuffer());
+  if (!m_silentOnTrivialError || m_diskWriteProtected)
+  {
+    ui->print(ui->getPrintBuffer());  
+  }
   return 0;
 }
 
-void FDC::formatTrack()
+BYTE* FDC::getInterleaveTable(BYTE sectorsPerTrack, BYTE interleave)
 {
+  // compute custom interleave table (1-based indexing)
+  BYTE* result = new BYTE[sectorsPerTrack + 1];
+  if (!result)
+  {
+    return result;
+  }
+  memset(result, 0, sectorsPerTrack+1);
+
+  // fallback to sequential on invalid values
+  if (!interleave || (interleave >= sectorsPerTrack))
+  {
+    interleave = 1;
+  }
+
+  BYTE pos = 1;
+  BYTE currentSector = 1;
+  while (currentSector <= sectorsPerTrack)
+  {
+    result[pos] = currentSector++;
+    pos += interleave;
+    if (pos > sectorsPerTrack)
+    {
+      pos = pos % sectorsPerTrack;
+      while ((pos <= sectorsPerTrack) && (result[pos]))
+      {
+        pos++;
+      }
+    }
+  }
+
+  return result;
+}
+
+bool FDC::formatTrack(bool customCHSVTable, BYTE interleave)
+{  
+  // formats current physical track and head number (without bad sector verify)
+  // customCHSVTable: true if g_rwBuffer already contains the prepared 4-byte values (optional)
+  // interleave: sector interleave factor, default 1:1 (optional)
   if (!m_params)
   {
-    return;
+    return false;
   }
   
-  // formats current track and head number (without bad sector verify)
   m_currentSector = 1;
-  
-  // clear and prepare write buffer with 4-byte 'CHSV' format values, for each sector in track
-  memset(g_rwBuffer, 0, m_params->SectorsPerTrack * 4);
-  dataPos = 0;
-  for (BYTE sector = 0; sector < m_params->SectorsPerTrack; sector++)
+  if (!customCHSVTable)
   {
-    g_rwBuffer[dataPos++] = m_currentTrack; // C
-    g_rwBuffer[dataPos++] = m_currentHead;  // H
-    g_rwBuffer[dataPos++] = sector + 1;     // S (1-based)
-    g_rwBuffer[dataPos++] = convertSectorSize(m_params->SectorSizeBytes); // V (value of sector size, 0 to 3)
+    BYTE* interleaveTable = getInterleaveTable(m_params->SectorsPerTrack, interleave);
+    if (!interleaveTable)
+    {
+      return false;
+    }
+    
+    // clear and prepare write buffer with 4-byte 'CHSV' format values, for each sector in track
+    memset(&g_rwBuffer[0], 0, m_params->SectorsPerTrack * 4);
+    dataPos = 0;
+    for (BYTE sector = 0; sector < m_params->SectorsPerTrack; sector++)
+    {
+      g_rwBuffer[dataPos++] = m_currentTrack;                               // C
+      g_rwBuffer[dataPos++] = m_currentHead;                                // H
+      g_rwBuffer[dataPos++] = interleaveTable[sector+1];                    // S (1-based)
+      g_rwBuffer[dataPos++] = convertSectorSize(m_params->SectorSizeBytes); // V (value of sector size, 0 to 6)
+    }
+    
+    delete[] interleaveTable;
   }
   
   if (!m_initialized || m_lastError)
@@ -744,7 +806,7 @@ void FDC::formatTrack()
     // 0x4D Format track
     sendCommand(0x4D);
     sendData((m_currentHead << 2) | m_params->DriveNumber); // head and drive
-    sendData(convertSectorSize(m_params->SectorSizeBytes)); // sector size 0 to 3, 128B to 1024B
+    sendData(convertSectorSize(m_params->SectorSizeBytes)); // sector size 0 to 6, 128B to 8192B
     sendData(m_params->SectorsPerTrack); // EOT, last sector on track
     sendData(m_params->Gap3Length); // GAP3
     sendData(m_params->LowLevelFormatFiller); // filler byte into sectors
@@ -757,7 +819,7 @@ void FDC::formatTrack()
       motorOff();
             
       ui->print(Progmem::getString(Progmem::errINTTimeout));
-      return;
+      return false;
     }
     
     BYTE st0 = getData();
@@ -772,25 +834,31 @@ void FDC::formatTrack()
     if (processIOResult(st0, st1, st2, m_params->SectorsPerTrack))
     {
       m_diskChangeInquired = false; // data changed on disk; return disk changed yes when asked once
-      return; // no errors during I/O
+      return true; // no errors during I/O
     }
   }
     
   m_idle = true;
   m_lastError = true;
-  ui->print(ui->getPrintBuffer());
-  return;
+  if (!m_silentOnTrivialError || m_diskWriteProtected)
+  {
+    ui->print(ui->getPrintBuffer());  
+  }
+  return false;
 }
 
-WORD FDC::verifyTrack()
+WORD FDC::verify(BYTE sector, bool wholeTrack, BYTE* overrideTrack, BYTE* overrideHead)
 {
-  if (!m_params)
-  {
-    return;
-  }
+  // reads sector(s) without storing the buffer  
+  // overrideTrack, overrideHead: logical sector information differs from what's in the current physical track (non-standard disks)
+  // FDC::verify() without input arguments verifies whole track
   
-  // reads whole track without storing the buffer
-  m_currentSector = 1;
+  if (!m_params || (sector > m_params->SectorsPerTrack))
+  {
+    return 0;
+  }
+    
+  m_currentSector = sector;
   
   if (!m_initialized || m_lastError)
   {
@@ -817,15 +885,27 @@ WORD FDC::verifyTrack()
     
     // set longitudinal or perpendicular mode
     setRecordingMode();
+    
+    // supplied track or head number differs from the physical we're currently at?
+    BYTE currentTrack = m_currentTrack;
+    BYTE currentHead = m_currentHead;
+    if (overrideTrack)
+    {
+      currentTrack = *overrideTrack;
+    }
+    if (overrideHead)
+    {
+      currentHead = *overrideHead;
+    }
        
-    // 0x46 Read sector
+    // 0x46 Read data
     sendCommand(0x46);
-    sendData((m_currentHead << 2) | m_params->DriveNumber); // head and drive
-    sendData(m_currentTrack); // current track
-    sendData(m_currentHead); // head again
-    sendData(1); // starting at sector 1
-    sendData(convertSectorSize(m_params->SectorSizeBytes));  // sector size 0 to 3, 128B to 1024B
-    sendData(m_params->SectorsPerTrack); // read whole track
+    sendData((m_currentHead << 2) | m_params->DriveNumber); // physical head and drive
+    sendData(currentTrack); // logical track
+    sendData(currentHead); // logical head
+    sendData(sector); // starting sector
+    sendData(convertSectorSize(m_params->SectorSizeBytes));  // sector size 0 to 6, 128B to 8192B
+    sendData(wholeTrack ? m_params->SectorsPerTrack : sector); // ending sector
     sendData(m_params->GapLength); // gap length
     sendData((m_params->SectorSizeBytes == 128) ? 0x80 : 0xFF); // data transfer length
     
@@ -837,7 +917,7 @@ WORD FDC::verifyTrack()
       motorOff();
       
       ui->print(Progmem::getString(Progmem::errINTTimeout));
-      return;
+      return 0;
     }
     
     BYTE st0 = getData();
@@ -849,7 +929,7 @@ WORD FDC::verifyTrack()
     m_currentSector = getData();
     getData();
     
-    if (processIOResult(st0, st1, st2, m_params->SectorsPerTrack))
+    if (processIOResult(st0, st1, st2, wholeTrack ? m_params->SectorsPerTrack : sector))
     {
       return dataPos;
     }
@@ -857,7 +937,10 @@ WORD FDC::verifyTrack()
     
   m_idle = true;
   m_lastError = true;
-  ui->print(ui->getPrintBuffer());
+  if (!m_silentOnTrivialError)
+  {
+    ui->print(ui->getPrintBuffer());  
+  }
   return 0;
 }
 
@@ -865,7 +948,7 @@ WORD FDC::verifyTrack()
 bool FDC::verifyTrack0(bool beforeWriteOperation)
 {
   seekDrive(0, 0);
-  verifyTrack();
+  verify();
   
   if (m_lastError)
   {
@@ -879,13 +962,13 @@ bool FDC::verifyTrack0(bool beforeWriteOperation)
     // cannot read track 0 - bad disk or improperly config'd drive  
     else
     {
-      ui->print(Progmem::getString(Progmem::diskIoTrack0Error));
+      ui->print(Progmem::getString(Progmem::errTrack0Error));
             
       // try formatting first?
       if (beforeWriteOperation)
       {
         ui->print(Progmem::getString(Progmem::uiNewLine));
-        ui->print(Progmem::getString(Progmem::diskIoTryFormat));
+        ui->print(Progmem::getString(Progmem::errTryFormat));
       }
       
       ui->print(Progmem::getString(Progmem::uiNewLine));
@@ -938,10 +1021,15 @@ bool FDC::processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo)
   
   // process IO operation result, and if there was an error, print it into the ui->print() buffer
   // however, print it out only after all retries failed
+  // if m_silentOnTrivialError, only print fatal errors and no disk in drive/disk write protected
   
-  // reset these two flags, to be determined here
+  // reset these flags, to be determined here
   m_diskWriteProtected = false;
   m_lastError = false;
+  
+  // control mark: read/write data found with a deleted address mark
+  // OR read/write deleted data found with a regular address mark
+  m_controlMark = st2 & 0x40;
   
   // bits 7-6 of st0, if equal to 0, indicate successful operation
   // however, also allow st1 bit 7 set ("End of track error") to pass as OK
@@ -954,7 +1042,7 @@ bool FDC::processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo)
   
   m_lastError = true;
   BYTE errorMessage = 0;
-   
+    
   // CRC error
   if ((st1 & 0x20) || (st2 & 0x20))
   {
@@ -1090,7 +1178,7 @@ void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
   motorOff();
   
   // reset interrupt handler
-  detachInterrupt(2);
+  detachInterrupt(digitalPinToInterrupt(2));
   intType = 0;
 
   m_params = newParams;
@@ -1104,15 +1192,27 @@ void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
   m_diskWriteProtected = false;
   m_diskChangeInquired = false;
   m_idle = false;
-
-  setInterrupt();
-  sei();
-
-  // recalibrate and seek to track 0
-  recalibrateDrive();
+  m_silentOnTrivialError = false;
+  m_controlMark = false;
+  sei();  
   
-  // now seek to track 10, then down to 0 in decrements of two
-  int trackToSeek = 10;
+  // do a quick seek test  
+  if (!seekTest(10, 2))
+  {
+    fatalError(Progmem::errSeek);
+  }  
+}
+
+bool FDC::seekTest(BYTE toTrack, BYTE step)
+{ 
+  // seek "toTrack" in one go, then down to 0 in decrements of "step"
+  // make sure we're recalibrated and on track 0
+  setInterrupt();
+  resetController();
+  recalibrateDrive();
+
+  int trackToSeek = toTrack;
+  BYTE onTrackZero = 0;
   while (trackToSeek >= 0)
   {
     seekDrive(trackToSeek, 0);
@@ -1124,20 +1224,21 @@ void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
     
     sendCommand(4);
     sendData(m_params->DriveNumber);
-    BYTE onTrackZero = getData() & 0x10;
+    onTrackZero = getData() & 0x10;
         
-    // inspect TRK00 signal: is the head moving and sensor working?
+    // inspect TRK00 signal
     if (((trackToSeek == 0) && !onTrackZero) ||
         ((trackToSeek > 0) && onTrackZero))
     {
       m_idle = true;  
-      fatalError(Progmem::errSeek);
+      return false;
     }
     
-    trackToSeek -= 2;
+    trackToSeek -= step;
   }
   
   m_idle = true;
+  return (m_currentTrack == 0) && onTrackZero;
 }
 
 // determine if disk has been changed in the drive
@@ -1215,21 +1316,22 @@ BYTE FDC::getMaximumSectorCountForRW(BYTE startSector, WORD operationBytes)
   return endSector - startSector + 1;
 }
 
-// translate sector sizes in bytes to indexed 0-3 for the FDC internally
+// translate sector size in bytes to FDC sector size "N"
 BYTE FDC::convertSectorSize(WORD sectorSize)
 {
-  switch(sectorSize)
+  WORD sizeN = 0;
+  while ((128 << sizeN) != sectorSize)
   {
-  case 128:
-    return 0;
-  case 256:
-    return 1;
-  case 512:
-  default:
-    return 2;
-  case 1024:
-    return 3;
+    sizeN++;
   }
+  
+  return (BYTE)sizeN;
+}
+
+// convert sector size "N" to bytes
+WORD FDC::getSectorSizeBytes(BYTE sectorSizeN)
+{
+  return 128 << (WORD)sectorSizeN;
 }
 
 // allows to enable or disable auto floppy motor off timer
@@ -1278,4 +1380,80 @@ void FDC::setRecordingMode()
   // 0x12 Perpendicular mode
   sendCommand(0x12);
   sendData(data);
+}
+
+bool FDC::readSectorID(BYTE* track, BYTE* head, BYTE* sector, BYTE* sectorSizeN)
+{
+  // read the ID of whatever sector that is currently passing through the R/W head using the current comm rate
+  // on success, return its parameters
+  // on failure, this particular call does not write error information or swing the R/W head back and forth
+  // - no recalibration is called or signaled at the end, except when no disk was in drive
+  if (!m_params)
+  {
+    return false;
+  }
+  
+  if (!m_initialized || m_lastError)
+  {
+    recalibrateDrive();
+    seekDrive(m_currentTrack, m_currentHead);
+  }
+       
+  m_noDiskInDrive = false;
+  motorOn(false);
+  setInterrupt();
+  
+  for (BYTE retries = 0; retries < DISK_OPERATION_RETRIES; retries++)
+  {
+    m_idle = false;    
+    
+    // 0x4A Read ID
+    sendCommand(0x4A);
+    sendData((m_currentHead << 2) | m_params->DriveNumber); // head and drive
+    if (!waitForDATA())
+    {
+      resetController();
+      m_idle = true;
+      m_lastError = true;
+      m_noDiskInDrive = true;
+      
+      return false;
+    }
+    
+    const BYTE st0 = getData();
+    const BYTE st1 = getData();
+    getData();
+    
+    const BYTE _track = getData();
+    const BYTE _head  = getData();
+    m_currentSector   = getData();
+    const BYTE _ssize = getData();
+        
+    // on success, return values if pointers were provided
+    if (!(st0 & 0xC0) || (st1 & 0x80))
+    {
+      if (track)
+      {
+        *track = _track;
+      }    
+      if (head)
+      {
+        *head = _head;
+      }
+      if (sector)
+      {
+        *sector = m_currentSector;
+      }
+      if (sectorSizeN)
+      {
+        *sectorSizeN = _ssize;
+      }
+      
+      m_idle = true;
+      return true;
+    }
+  }
+  
+  m_idle = true;
+  return false;
 }

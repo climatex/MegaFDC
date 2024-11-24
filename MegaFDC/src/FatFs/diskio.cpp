@@ -1,8 +1,11 @@
 // MegaFDC diskio overrides
-// (c) 2023 J. Bogin
+// (c) 2023-2024 J. Bogin
+
+#include "..\..\config.h" // we
+
+#ifndef BUILD_IMD_IMAGER
 
 #include "diskio.h"
-#include "..\..\config.h" // we
 
 // disk rwBuffer[0...511] is current 512B FAT sector data (FatFs operates in single sectors)
 // minimum SECTOR_BUFFER_SIZE is 1K to support 8" DSDD, so use the upper half for FAT file data window
@@ -130,3 +133,5 @@ DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void* buff)
   
   return res;
 }
+
+#endif

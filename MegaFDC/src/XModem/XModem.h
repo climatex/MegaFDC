@@ -29,27 +29,27 @@ typedef enum {
 
 class XModem {
 	private:
-    unsigned int blockSize; // 128 or 1024 bytes, depending on constructor
+    unsigned int m_blockSize; // 128 or 1024 bytes, depending on constructor
      //delay when receive bytes in frame - 7 secs
-		static const int receiveDelay;
+		static const int m_receiveDelay;
 		//retry limit when receiving
-		static const int rcvRetryLimit;
+		static const int m_rcvRetryLimit;
 		//holds readed byte (due to dataAvail())
-		int byte;
+		int m_byte;
 		//expected block number
-		unsigned char blockNo;
+		unsigned char m_blockNo;
 		//extended block number, send to dataHandler()
-		unsigned long blockNoExt;
+		unsigned long m_blockNoExt;
 		//retry counter for NACK
-		int retries;
+		int m_retries;
 		//buffer
 		//char buffer[133];
-    char* buffer;
+    char* m_buffer;
 		//repeated block flag
-		bool repeatedBlock;
+		bool m_repeatedBlock;
 
 		int  (*recvChar)(int);
-                void (*sendData)(const char *data, int len);
+    void (*sendData)(const char *data, int len);
 		bool (*dataHandler)(unsigned long number, char *buffer, int len);
 		unsigned short crc16_ccitt(char *buf, int size);
 		bool dataAvail(int delay);

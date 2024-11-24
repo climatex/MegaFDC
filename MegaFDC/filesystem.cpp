@@ -1,7 +1,9 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // FatFs interface for filesystem support
 
 #include "config.h"
+
+#ifndef BUILD_IMD_IMAGER
 
 // get pointers to FATFS and FIL structs
 FATFS* getFat()
@@ -393,3 +395,5 @@ FRESULT fatResult(FRESULT result)
   
   return result;
 }
+
+#endif

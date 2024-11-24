@@ -1,7 +1,9 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // EEPROM helper functions to load and save drives configuration
 
 #include "config.h"
+
+#ifndef BUILD_IMD_IMAGER
 
 // initialized EEPROM data structure
 // offset (dec.), length in bytes, description:
@@ -118,3 +120,5 @@ bool eepromLoadConfiguration()
 
   return true;
 }
+
+#endif

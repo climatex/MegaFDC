@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // Floppy disk controller interface
 // Software compatible with a NEC uPD765 or any other PC FDC
 
@@ -101,6 +101,10 @@ public:
   bool getLastError() { return m_lastError; }
   bool wasErrorNoDiskInDrive() { return m_noDiskInDrive; }
   bool wasErrorDiskProtected() { return m_diskWriteProtected; }
+  // read/write with DAM
+  bool wasControlMark() { return m_controlMark; }
+  // if true, print only fatal errors, no disk in drive or write protection
+  void setSilentOnTrivialError(bool silent) { m_silentOnTrivialError = silent; }
   
   // CHS and sizes
   BYTE getCurrentTrack() { return m_currentTrack; }
@@ -109,18 +113,23 @@ public:
   void convertLogicalSectorToCHS(WORD logicalSector, BYTE& track, BYTE& head, BYTE& sector);
   WORD getTotalSectorCount();
   BYTE getMaximumSectorCountForRW(BYTE startSector, WORD operationBytes = 0);
+  BYTE convertSectorSize(WORD sectorSize);
+  WORD getSectorSizeBytes(BYTE sectorSizeN);
   
   // floppy drive operations
   void motorOff();
   void resetController();
   void recalibrateDrive();
+  void setCommunicationRate();
   void seekDrive(BYTE track, BYTE head);
-  WORD readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector, WORD* dataPosition = NULL);
-  void formatTrack();
-  WORD verifyTrack();
+  bool readSectorID(BYTE* track = NULL, BYTE* head = NULL, BYTE* sector = NULL, BYTE* sectorSizeN = NULL);
+  WORD readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector, WORD* dataPosition = NULL, bool deleted = false, BYTE* overrideTrack = NULL, BYTE* overrideHead = NULL);
+  bool formatTrack(bool customCHSVTable = false, BYTE interleave = 1);
+  WORD verify(BYTE sector = 1, bool wholeTrack = true, BYTE* overrideTrack = NULL, BYTE* overrideHead = NULL);
   bool verifyTrack0(bool beforeWriteOperation = false);
   void setActiveDrive(DiskDriveMediaParams* newParams);
   void setAutomaticMotorOff(bool enabled = true);
+  bool seekTest(BYTE toTrack, BYTE step = 1);
   
 private:  
   FDC();
@@ -132,10 +141,10 @@ private:
   BYTE getData();
   void sendData(BYTE data);  
   void sendCommand(BYTE command);
-  BYTE convertSectorSize(WORD sectorSize);
   bool processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo);
   void fatalError(BYTE message);
   void setRecordingMode();
+  BYTE* getInterleaveTable(BYTE sectorsPerTrack, BYTE interleave);
   
   DiskDriveMediaParams* m_params;
   BYTE m_currentTrack;
@@ -148,6 +157,8 @@ private:
   bool m_diskWriteProtected;
   bool m_diskChangeInquired;
   bool m_lastError;
+  bool m_silentOnTrivialError;
+  bool m_controlMark;
   
   BYTE m_specialFeatures;
 };

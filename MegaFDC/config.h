@@ -1,18 +1,25 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // Build and wiring configuration
 
 #pragma once
 
-// conditional build; comment out line to disable display and keyboard support
+// begin conditional build options:
+// comment out line to disable display and keyboard support
 #define UI_ENABLED
+
+// by default, build regular MegaFDC with command line and filesystem support
+// to work as an IMD imager, uncomment the following define
+//#define BUILD_IMD_IMAGER
+// end conditional build options.
 
 /*
 
   Default pin assignments to a Mega2560 rev3 board
   FDC board schematic see http://boginjr.com/it/hw/megafdc/
   PS/2 2.88MB support see http://boginjr.com/it/hw/ps2/
+  IMD mode see            http://boginjr.com/it/hw/imd/
   
-  optional AT/PS2 keyboard, pinout configurable
+  optional AT/PS2/switchable USB keyboard, pinout configurable
   Vcc, GND              (Vcc, GND)
   CLOCK (KEYB_CLK)      (PORTE5: D03) reconfigure note: must be interrupt capable
   DATA (KEYB_DATA)      (PORTG5: D04)
@@ -63,27 +70,6 @@
 #define SWITCH_DISABLE_UI      5    // ground this pin to talk via serial even if built with UI_ENABLED
 #define SWITCH_9600BPS_RATE    6    // ground this pin to slow down the serial comm from 115200 to 9600
 
-// just in case
-#undef BYTE
-#undef WORD
-#undef DWORD
-#define BYTE uint8_t
-#define WORD uint16_t
-#define DWORD uint32_t
-
-// internal includes and used libraries
-#include <Arduino.h>
-#include <avr/sfr_defs.h>
-#include <string.h>
-#include <EEPROM.h>
-#include "src/FatFs/ff.h"
-#include "src/XModem/XModem.h"
-
-#ifdef UI_ENABLED
-  #include "src/PS2KeyAdvanced/PS2KeyAdvanced.h"
-  #include "src/U8g2/U8g2lib.h"
-#endif
-
 // UI defines
 //#define CLEAR_SCREEN_SERIAL  1                  // uncomment for ui->print("") function (which clears the LCD) to also clear the terminal over serial comm
 #define UI_FONT                u8g2_font_4x6_mr   // 128 x 64 display with a 4x6 monospace font
@@ -96,25 +82,59 @@
 #define MAX_PROGMEM_STRING_LEN 50                 // maximum number of characters for each string in PROGMEM, MAX+1 size of buffer for pgm_read_ptr()
 
 // FDC defines
-#define SECTOR_BUFFER_SIZE     3072               // disk sector I/O buffer, needs to be divisible by 128
+#ifndef BUILD_IMD_IMAGER                          // - normal MegaFDC:
+  #define SECTOR_BUFFER_SIZE   3072               // disk sector I/O buffer, needs to be divisible by 128
                                                   // min. 512B for FAT, and 1024 for 8" drive support and XMODEM-1K
                                                   // 1.44M disk image transfer thru XMODEM-1K vs bufsize: 3072 (3:45), 1024 (5:20), 512 (XMODEM-128, 10min)
-#define IO_TIMEOUT             5000               // how many 1ms iterations to wait for an FDC interrupt or RQM response
+#else                                             // - IMD imager mode, works sector-by-sector:
+  #define SECTOR_BUFFER_SIZE   2048               // min. 2K, 4K will throw memory warning (can only format/verify 8K sector sizes but not R/W; not enough RAM)
+#endif
+
+#define IO_TIMEOUT             8500000            // number of (32bit) decrements in a while loop checking a response from the FDC; about 5 seconds 
 #define DISK_OPERATION_RETRIES 5                  // number of retries per disk operation (at least 5)
 
 // filesystem defines
 #define MAX_PATH               48                 // max path, MAX_PATH+1 size of path buffer
 
+// just in case
+#undef BYTE
+#undef WORD
+#undef DWORD
+#define BYTE uint8_t
+#define WORD uint16_t
+#define DWORD uint32_t
+
+// if building in IMD imager mode only, make sure UI_ENABLED is always defined
+#if defined(BUILD_IMD_IMAGER) && !defined(UI_ENABLED)
+  #define UI_ENABLED
+#endif
+ 
+// internal includes and used libraries
+#include <Arduino.h>
+#include <avr/sfr_defs.h>
+#include <string.h>
+#include "src/XModem/XModem.h"
+#include "src/PS2KeyAdvanced/PS2KeyAdvanced.h"
+#include "src/U8g2/U8g2lib.h"
+#ifndef BUILD_IMD_IMAGER
+  #include <EEPROM.h>
+  #include "src/FatFs/ff.h"
+#endif
+
 // our common includes
 #include "progmem.h"
-#include "eeprom.h"
 #include "isr.h"
 #include "ui.h"
 #include "fdc.h"
-#include "commands.h"
 #include "xmodem.h"
-#include "cpm.h"
-#include "filesystem.h"
+#ifndef BUILD_IMD_IMAGER
+  #include "commands.h"
+  #include "eeprom.h"  
+  #include "cpm.h"
+  #include "filesystem.h"
+#else
+  #include "imd.h"
+#endif
 
 // public globals
 // UI and FDC singletons - one UI and floppy controller per system

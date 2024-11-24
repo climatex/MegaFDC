@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // User interface
 
 #pragma once
@@ -26,7 +26,7 @@ public:
   
   void print(const BYTE* str, ...);
   BYTE readKey(const BYTE* allowedKeys = NULL, bool withWait = true);
-  const BYTE* prompt(BYTE maximumPromptLen = 0, const BYTE* allowedKeys = NULL);
+  const BYTE* prompt(BYTE maximumPromptLen = 0, const BYTE* allowedKeys = NULL, bool escReturnsNull = false);
   
   bool isOnLastColumn() { return m_currentColumn >= MAX_COLS; }
   bool isOnLastLine() { return m_cursorY >= CHAR_HEIGHT*(MAX_LINES-1); }

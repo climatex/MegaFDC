@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 
 // "Dummy" INO file to build from Arduino IDE
 // For build and connection details see config.h and my website

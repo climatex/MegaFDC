@@ -1,7 +1,9 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // Command prompt with commands
 
 #include "config.h"
+
+#ifndef BUILD_IMD_IMAGER
 
 // internal forward declarations
 void SetupDrives();
@@ -39,11 +41,14 @@ BYTE promptFullPathSetting = 0xFF; // not set
 // initialize: setup drives manually or load settings from EEPROM
 void InitializeDrives()
 {
+  // gibberish over serial initialization sometimes
+  ui->print(Progmem::getString(Progmem::uiDeleteLine));
   ui->print("");
   ui->print(Progmem::getString(Progmem::uiSplash));
+  ui->print(Progmem::getString(Progmem::uiBuild));
     
   // check if the floppy controller is responding to a reset command
-  ui->print(Progmem::getString(Progmem::initializingFDC));
+  ui->print(Progmem::getString(Progmem::uiInitializingFDC));
   fdc->resetController();
   ui->print(" ");
   ui->print(Progmem::getString(Progmem::uiOK));
@@ -85,7 +90,7 @@ void InitializeDrives()
   
   // initialize first drive A: and begin with the prompt
   ui->print("");
-  ui->print(Progmem::getString(Progmem::uiWaitingForDrives));
+  ui->print(Progmem::getString(Progmem::waitingForDrives));
   fdc->setActiveDrive(&g_diskDrives[0]);  
 }
 
@@ -133,7 +138,7 @@ void SetupDrives()
   
   // initialize first drive A: and begin with the prompt
   ui->print("");
-  ui->print(Progmem::getString(Progmem::uiWaitingForDrives));
+  ui->print(Progmem::getString(Progmem::waitingForDrives));
   fdc->setActiveDrive(&g_diskDrives[0]);
 }
 
@@ -1783,7 +1788,7 @@ void CommandFORMAT(FDC::DiskDriveMediaParams* drive)
     // format OK, now verify
     else if (withVerify)
     {
-      const WORD successfulBytesRead = fdc->verifyTrack();     
+      const WORD successfulBytesRead = fdc->verify();     
       if (fdc->wasErrorNoDiskInDrive())
       {
         break;
@@ -1821,7 +1826,7 @@ void CommandFORMAT(FDC::DiskDriveMediaParams* drive)
   bool track0Bad = !finishedOk && (track == 0) && !fdc->wasErrorNoDiskInDrive() && !fdc->wasErrorDiskProtected();  
   if (track0Bad)
   {
-    ui->print(Progmem::getString(Progmem::diskIoTrack0Error));
+    ui->print(Progmem::getString(Progmem::errTrack0Error));
     ui->print(Progmem::getString(Progmem::uiNewLine2x));
   }
   
@@ -1892,7 +1897,7 @@ void CommandVERIFY(FDC::DiskDriveMediaParams* drive)
     ui->print(Progmem::getString(Progmem::diskIoProgress), track, head);
     fdc->seekDrive(track, head);    
     
-    const WORD successfulBytesRead = fdc->verifyTrack();
+    const WORD successfulBytesRead = fdc->verify();
     if (fdc->wasErrorNoDiskInDrive())
     {
       break;
@@ -1924,7 +1929,7 @@ void CommandVERIFY(FDC::DiskDriveMediaParams* drive)
   bool track0Bad = !finishedOk && (track == 0) && !fdc->wasErrorNoDiskInDrive() && !fdc->wasErrorDiskProtected();  
   if (track0Bad)
   {
-    ui->print(Progmem::getString(Progmem::diskIoTrack0Error));
+    ui->print(Progmem::getString(Progmem::errTrack0Error));
     ui->print(Progmem::getString(Progmem::uiNewLine2x));
   }
   
@@ -2101,3 +2106,5 @@ void CommandXFER(const BYTE* fileName)
     xmodemReceiveFile(fileName);
   }
 }
+
+#endif

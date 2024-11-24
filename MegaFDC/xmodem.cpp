@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
 // XMODEM helpers
 
 #include "config.h"
@@ -11,7 +11,7 @@ bool success;
 
 int xmodemRx(int msDelay) 
 { 
-  DWORD start = millis();
+  const DWORD start = millis();
   while ((millis()-start) < msDelay)
   { 
     if (Serial.available())
@@ -31,20 +31,28 @@ void xmodemTx(const char *data, int size)
 // dump serial transfer if not successful
 void dumpSerialTransfer()
 {
-  DWORD delayMs = millis() + 100;
+  const BYTE CAN = 0x18;
+  
+  DWORD delayMs = millis() + 10;
   while (millis() < delayMs)
   {
     if (Serial.read() >= 0)
     {
-      delayMs = millis() + 100;
+      delayMs = millis() + 10;
     }
   }
   
   while (Serial.available() > 0)
   {
-    Serial.read();
+    Serial.read(); 
   }
+  
+  Serial.write(&CAN, sizeof(BYTE));
+  Serial.write(&CAN, sizeof(BYTE));
+  Serial.write(&CAN, sizeof(BYTE));
 }
+
+#ifndef BUILD_IMD_IMAGER
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -227,12 +235,9 @@ bool xmodemReadDiskIntoImageFile(bool useXMODEM_1K)
   
   XModem modem(xmodemRx, xmodemTx, xmodemImageTxCallback, useXMODEM_1K);
   bool result = modem.transmit() && success;
+  dumpSerialTransfer();
     
   fdc->seekDrive(0, 0);
-  if (!result)
-  {
-    dumpSerialTransfer(); // dump the rest of the transfer
-  }
   ui->setPrintDisabled(false, false);
   
   // some remains of a dumped transfer can be present on the terminal, clear it
@@ -297,11 +302,7 @@ bool xmodemWriteDiskFromImageFile(bool useXMODEM_1K)
     xmodemImageRxCallback(0, &dummy, 0);
   }  
   
-  if (!result)
-  {
-    dumpSerialTransfer();
-  }
-  
+  dumpSerialTransfer();  
   ui->setPrintDisabled(false, false);
   fdc->seekDrive(0, 0);
   
@@ -473,11 +474,7 @@ bool xmodemSendFile(const BYTE* existingFileName)
   ui->disableKeyboard(false);
   fdc->setAutomaticMotorOff(true);
   
-  if (!result)
-  {
-    dumpSerialTransfer();
-  }
-  
+  dumpSerialTransfer(); 
   ui->setPrintDisabled(false, false);
   
   ui->print(Progmem::getString(Progmem::uiVT100ClearScreen));
@@ -542,11 +539,7 @@ bool xmodemReceiveFile(const BYTE* newFileName)
   
   ui->disableKeyboard(false);
     
-  if (!result)
-  {
-    dumpSerialTransfer();
-  }
-  
+  dumpSerialTransfer();  
   ui->setPrintDisabled(false, false);
   fdc->setAutomaticMotorOff(true);
   
@@ -569,3 +562,5 @@ bool xmodemReceiveFile(const BYTE* newFileName)
     
   return result;
 }
+
+#endif
