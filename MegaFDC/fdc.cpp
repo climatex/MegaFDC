@@ -306,11 +306,12 @@ void FDC::setCommunicationRate()
     writeRegister(DRR, 0);
   }
   
-  // step rate time (SRT): 8": 10ms, 5.25": 8ms, 3.5": 4ms
+  // step rate time (SRT): 8": 16ms, 5.25": 8ms, 3.5": 4ms
   if (m_params->DriveInches == 8)
   {
+     // my CDC requires up to 23ms but 16ms is the highest the FDC will go @ 500K
      // the highest for 1Mbps is 8ms but I've never seen an 8" operate at that rate
-    m_params->SRT = (m_params->CommRate < 1000) ? 10 : 8;
+    m_params->SRT = (m_params->CommRate < 1000) ? 16 : 8;
   }  
   else if (m_params->DriveInches == 5)
   {

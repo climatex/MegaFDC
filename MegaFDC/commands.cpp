@@ -1642,7 +1642,16 @@ void CommandDRIVPARM(FDC::DiskDriveMediaParams* drive)
   }
   else
   {
-    ui->print(Progmem::getString(Progmem::drivParmDataRate), ((drive->FM) ? drive->CommRate/2 : drive->CommRate));
+    // FM
+    WORD dataRate = (drive->FM) ? drive->CommRate/2 : drive->CommRate;
+    
+    // 300kbps comm rate and double stepping, assume 300RPM disk in a 360RPM drive at same media rate
+    if (drive->DoubleStepping && (drive->CommRate == 300))
+    {
+      dataRate = 250;
+    }
+      
+    ui->print(Progmem::getString(Progmem::drivParmDataRate), dataRate);
     ui->print(Progmem::getString(Progmem::drivParmKbps));
   }
   ui->print(Progmem::getString(Progmem::uiNewLine)); NEXT_LINE_PAUSE;
