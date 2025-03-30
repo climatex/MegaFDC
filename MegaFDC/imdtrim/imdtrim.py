@@ -104,6 +104,7 @@ def main():
       print("Invalid data in IMD file")
     else:
       print("Trim likely not required")
+      remove_warning(imd) # if it happens to have one
     imd.close()
     return
   newsize = imd.tell() - 1

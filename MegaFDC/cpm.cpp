@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
 // CP/M filesystem for 8" SSSD/FM (250K)
 // IBM 3740 single-sided geometry 77x26x128B
 

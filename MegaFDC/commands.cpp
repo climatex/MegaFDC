@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
 // Command prompt with commands
 
 #include "config.h"

@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
 // Floppy disk controller interface
 // Software compatible with a NEC uPD765 or any other PC FDC
 
@@ -45,6 +45,7 @@ FDC::FDC()
   // means: floppy controller successfully reset and drive can be seeked to track 0
   m_initialized = false;
   
+  m_params = NULL;  
   m_lastError = false;
   m_motorOn = false;
   m_noDiskInDrive = false;
@@ -585,15 +586,14 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
   // sanity checks
   if (!m_params ||
       !startSector ||
-      (startSector > endSector) ||
-      (endSector > m_params->SectorsPerTrack))
+      (startSector > endSector))
   {
     return 0;
   }
   
   // check for end-of-track and data position buffer overflow
   const WORD sectorCount = endSector-startSector+1;
-  if (sectorCount > getMaximumSectorCountForRW(startSector))
+  if ((sectorCount > 1) && (sectorCount > getMaximumSectorCountForRW(startSector)))
   {
     return 0;
   }  

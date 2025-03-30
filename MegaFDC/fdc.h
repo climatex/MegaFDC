@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
 // Floppy disk controller interface
 // Software compatible with a NEC uPD765 or any other PC FDC
 

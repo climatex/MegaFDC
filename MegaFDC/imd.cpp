@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
 // IMD (ImageDisk)-compatible disk imager
 
 #include "config.h"
@@ -417,26 +417,23 @@ bool IMD::autodetectHeads()
   return true;  
 }
 
-bool IMD::autodetectInterleave(WORD** keepTable)
+WORD* IMD::autodetectSectorsPerTrack(BYTE& observedSPT, BYTE& maximumSPT)
 {
-  // from the current physical track, gather a table of sectors and their logical IDs
-  // + compute interleave factor for the r/w callbacks (m_cbInterleave)
+  // from the current physical track, return a table of sectors and their logical IDs
+  observedSPT = 0;
+  maximumSPT = 0;  
   
-  // max. current supported SPT is 63 which ought to be enough for everyone (TM)
-  // the floppy disk has been dead for quite some time anyway, and this limit can be raised if wished
   WORD* sectorsTable = new WORD[SECTORS_TABLE_COUNT];
   if (!sectorsTable)
   {
-    return false;
+    return NULL;
   }
   memset(sectorsTable, 0, SECTORS_TABLE_COUNT*sizeof(WORD));
   
-  // create an array of sectors sequence; treat the largest found sector number as the SPT
-  // each item is 16-bit, upper 8 bits: logical cylinder number, lower 8 bits: log. head (bit 7) and sector (bits 6-0)
-  // on no disk error and keepTable not null, return it and do not free memory  
+  // create an array of sectors sequence
   // sectors are 1-based, so 0s are empty (invalid) entries that didn't make it in disk rotations
-  BYTE sectorsPerTrack = 0;
   BYTE idx = 0;
+  BYTE computeSPT = 0;  
   DWORD timeStart = millis();
   
   // 5sec should give at least 25 complete disk revolutions @ 300RPM
@@ -445,13 +442,30 @@ bool IMD::autodetectInterleave(WORD** keepTable)
     BYTE track = 0;
     BYTE head = 0;        
     BYTE sector = 0;
-    if (fdc->readSectorID(&track, &head, &sector))
+    if (fdc->readSectorID(&track, &head, &sector) && sector)
     {
-      sectorsTable[idx++] = ((WORD)track << 8) | (head << 7) | (sector & 0x7F);
-      if (sector > sectorsPerTrack)
+      if (idx == 0)
       {
-        sectorsPerTrack = sector;
+        // count number of times until we see the same sector again: that's the observed SPT
+        computeSPT = sector;      
       }
+      else if (computeSPT == sector)
+      {
+        computeSPT = 0; // stop counting
+      }
+      if (computeSPT)
+      {
+        observedSPT++;
+      }
+      
+      // the maximum logical sector value seen
+      if (sector > maximumSPT)
+      {
+        maximumSPT = sector;
+      }
+      
+      // each item is 16-bit, upper 8 bits: logical cylinder number, lower 8 bits: log. head (bit 7) and sector (bits 6-0)
+      sectorsTable[idx++] = ((WORD)track << 8) | (head << 7) | (sector & 0x7F);
       if (idx == SECTORS_TABLE_COUNT)
       {
         break;
@@ -462,24 +476,94 @@ bool IMD::autodetectInterleave(WORD** keepTable)
       if (fdc->wasErrorNoDiskInDrive())
       {
         delete[] sectorsTable;
-        return false;
+        return NULL;
       }
     }
   }
   
-  // disk has no valid sector IDs
-  if (!idx || !sectorsPerTrack)
+  // failsafe
+  if (observedSPT > maximumSPT)
   {
-    delete[] sectorsTable;
-    return false;
+    observedSPT = maximumSPT;
   }
   
+  return sectorsTable;
+}
+
+bool IMD::autodetectInterleave()
+{
+  // first autodetect SPT by scanning the track into a sectors table,
+  // then compute interleave factor for the r/w callbacks (m_cbInterleave)
+  if (m_cbSectorsTable)
+  {
+    delete[] m_cbSectorsTable;
+    m_cbSectorsTable = NULL;
+  }
+  
+  // up to 3 attempts if there are gaps due to bad sector presence
+  WORD* attempts[3] = {NULL};
+  BYTE sectorsPerTrack = 0;
+  BYTE idx;
+  BYTE idxToUse = (BYTE)-1; // unsure, yet
+  
+  for (idx = 0; idx < 3; idx++)
+  {
+    BYTE observedSPT = 0;
+    BYTE maximumNumber = 0;
+    attempts[idx] = autodetectSectorsPerTrack(observedSPT, maximumNumber);
+    
+    if (!attempts[idx])
+    {
+      idxToUse = (BYTE)-1; // indicate failure, due to no disk in drive or memory error
+      break;
+    }
+        
+    // no gaps in the sectors being scanned, done
+    if ((observedSPT == maximumNumber) && (observedSPT > 0))
+    {
+      sectorsPerTrack = observedSPT;
+      idxToUse = idx;
+      break;
+    }
+    
+    // gaps present, try to re-seek and retry
+    if (observedSPT > sectorsPerTrack)
+    {
+      sectorsPerTrack = observedSPT;
+      idxToUse = idx;
+    }
+    
+    fdc->recalibrateDrive();
+    fdc->seekDrive(fdc->getCurrentTrack(), fdc->getCurrentHead());
+  } 
+  
+  // determine which attempt at scanning yielded the most observed SPT and use that
+  // deallocate the other tables, if present
+  for (idx = 0; idx < 3; idx++)
+  {
+    if (attempts[idx])
+    {
+      if (idx == idxToUse)
+      {
+        m_cbSectorsTable = attempts[idx];
+        continue;
+      }
+      
+      delete[] attempts[idx];
+    }
+  }
+  
+  // no valid sector IDs, no disk, memory error
+  if (!m_cbSectorsTable || !sectorsPerTrack)
+  {
+    return false;
+  }
+    
   // if SPT is below 3, it is sequential
   else if (sectorsPerTrack < 3)
   {
     fdc->getParams()->SectorsPerTrack = sectorsPerTrack;
-    m_cbInterleave = 1;
-    if (keepTable) *keepTable = sectorsTable; else delete[] sectorsTable;    
+    m_cbInterleave = 1; 
     return true;
   }
   
@@ -489,8 +573,8 @@ bool IMD::autodetectInterleave(WORD** keepTable)
   idx = 0;
   while (idx < SECTORS_TABLE_COUNT-1)
   {
-    thisSector = ((BYTE)sectorsTable[idx]) & 0x7F;
-    nextSector = ((BYTE)sectorsTable[idx+1]) & 0x7F;
+    thisSector = ((BYTE)m_cbSectorsTable[idx]) & 0x7F;
+    nextSector = ((BYTE)m_cbSectorsTable[idx+1]) & 0x7F;
     // zero in table?
     if (!thisSector || !nextSector)
     {
@@ -511,7 +595,6 @@ bool IMD::autodetectInterleave(WORD** keepTable)
       // confirmed sequential
       fdc->getParams()->SectorsPerTrack = sectorsPerTrack;
       m_cbInterleave = 1;
-      if (keepTable) *keepTable = sectorsTable; else delete[] sectorsTable;
       return true;
     }
     
@@ -520,7 +603,7 @@ bool IMD::autodetectInterleave(WORD** keepTable)
     BYTE interleave = 0;
     while (idx2 < SECTORS_TABLE_COUNT)
     {
-      if (((BYTE)sectorsTable[idx2++] & 0x7F) != thisSector+1)
+      if (((BYTE)m_cbSectorsTable[idx2++] & 0x7F) != thisSector+1)
       {
         interleave++;
       }
@@ -530,11 +613,10 @@ bool IMD::autodetectInterleave(WORD** keepTable)
       }
     }
     // double-check if nextSector is advanced by the same factor
-    if (((BYTE)sectorsTable[idx+1+interleave] & 0x7F) == nextSector+1)
+    if (((BYTE)m_cbSectorsTable[idx+1+interleave] & 0x7F) == nextSector+1)
     {
       fdc->getParams()->SectorsPerTrack = sectorsPerTrack;
       m_cbInterleave = interleave;
-      if (keepTable) *keepTable = sectorsTable; else delete[] sectorsTable;
       return true;
     }
   }
@@ -542,7 +624,6 @@ bool IMD::autodetectInterleave(WORD** keepTable)
   // could not determine interleave, fall back to sequential but store SPT
   fdc->getParams()->SectorsPerTrack = sectorsPerTrack;
   m_cbInterleave = 1;
-  if (keepTable) *keepTable = sectorsTable; else delete[] sectorsTable;
   return false;
 }
 
@@ -1690,26 +1771,15 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
         return false;
       }
       
-      // the Mega2560 board has 8K SRAM so no chance of reading or writing 8K sectors - but we can format and verify those at least
-      if (m_cbSecSize == 6)
+      // the Mega2560 board has 8K SRAM, so no chance of reading or writing large sectors - but we can format and verify those at least
+      if (m_cbSecSize >= 5)
       {
         m_cbSuccess = false;
-        snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdXmodemLowRAM), 8);
+        snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdXmodemLowRAM), (m_cbSecSize == 5) ? 4 : 8);
         strcat(m_cbResponseStr, Progmem::getString(Progmem::imdAdvancedDetails));
         return false;
       }
-
-      // 4K support turned off by default too because of low memory warning, but it can be done
-#if SECTOR_BUFFER_SIZE < 4096
-      if (m_cbSecSize == 5)
-      {
-        m_cbSuccess = false;
-        snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdXmodemLowRAM), 4);
-        strcat(m_cbResponseStr, Progmem::getString(Progmem::imdAdvancedDetails));
-        return false;
-      }
-#endif
-      
+     
       packetIdx++;
       m_cbSecSizeBytes = fdc->getSectorSizeBytes(m_cbSecSize);
       m_cbSecSizeSpecified = true;
@@ -1759,20 +1829,47 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       BYTE newInterleave = 1; // assume sequential
       if (m_cbSpt > 2)
       {
-        const BYTE firstSector = m_cbSectorNumberingMap[0];
-        m_cbLastPos = 1;      
-        if (firstSector)
+        // find starting sector; might not start from one
+        BYTE startingSector = 1;
+        BYTE idx = 0;
+        
+        for (;;)
         {
-          while (m_cbLastPos < m_cbSpt)
+          for (idx = 0; idx < m_cbSpt; idx++)
           {
-            if (m_cbSectorNumberingMap[m_cbLastPos++] != firstSector+1)
-            {
-              newInterleave++;
-            }
-            else
+            if (m_cbSectorNumberingMap[idx] == startingSector)
             {
               break;
             }
+          }
+          
+          if (m_cbSectorNumberingMap[idx] != startingSector)
+          {
+            startingSector++;
+            if (startingSector > m_cbSpt)
+            {
+              startingSector = 1;
+              idx = 0;
+              break; // we tried
+            }  
+          }
+          else
+          {
+            break; // found
+          }
+        }
+        
+        // find interleave factor
+        m_cbLastPos = idx + 1;        
+        while (m_cbLastPos < m_cbSpt)
+        {
+          if (m_cbSectorNumberingMap[m_cbLastPos++] != startingSector+1)
+          {
+            newInterleave++;
+          }
+          else
+          {
+            break;
           }
         }
         
@@ -2415,19 +2512,12 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
         BYTE oldSpt = fdc->getParams()->SectorsPerTrack; // modified by autodetectInterleave
         fdc->getParams()->SectorsPerTrack = 0; // set this to zero to see if we have an issue with the call
         
-        // sectors table already exists?
-        if (m_cbSectorsTable)
-        {
-          delete[] m_cbSectorsTable;
-          m_cbSectorsTable = NULL;
-        }
-        
-        autodetectInterleave(&m_cbSectorsTable);             
+        autodetectInterleave();    
                
         // oh yes indeed we have
         if (!m_cbSectorsTable && (fdc->getParams()->SectorsPerTrack == 0))
         {
-          // less bad (SectorSizeBytes is > 0 so we know the disk had valid sectors)
+          // less bad
           if (fdc->getLastError() && fdc->wasErrorNoDiskInDrive())
           {
             m_cbSuccess = false;
@@ -2439,6 +2529,14 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
           // I swear to God I'm not touching anything with 8K of RAM or less in the Year of our Lord 2024
           m_cbSuccess = false;
           snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdMemoryError));
+          return false;
+        }
+        
+        // SPT out of range
+        else if (fdc->getParams()->SectorsPerTrack > 63)
+        {
+          m_cbSuccess = false;
+          snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdXmodemErrSpt));
           return false;
         }
                 
@@ -2527,6 +2625,15 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       {
         m_cbSecSize = 0;
         m_cbSecSizeBytes = 0;
+      }
+      
+      // more than 2K
+      if (m_cbSecSize >= 5)
+      {
+        m_cbSuccess = false;
+        snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdXmodemLowRAM), (m_cbSecSize == 5) ? 4 : 8);
+        strcat(m_cbResponseStr, Progmem::getString(Progmem::imdAdvancedDetails));
+        return false;
       }
       
       data[packetIdx++] = m_cbSecSize; 

@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
 // IMD (ImageDisk)-compatible file disk imager
 
 #pragma once
@@ -7,7 +7,7 @@ void InitializeDrives();
 void ProcessCommands();
 
 #define CHECK_STREAM_END    if (packetIdx >= size) return true;
-#define SECTORS_TABLE_COUNT 64
+#define SECTORS_TABLE_COUNT 128
 
 class IMD
 {
@@ -39,7 +39,8 @@ private:
   bool autodetectCommRate();
   bool autodetectHeads();
   bool autodetectDoubleStep();
-  bool autodetectInterleave(WORD** keepTable = NULL);
+  WORD* autodetectSectorsPerTrack(BYTE& observedSPT, BYTE& maximumSPT);
+  bool autodetectInterleave();
   void autodetectGaps(BYTE& sectorGap, BYTE& formatGap);
   bool tryAskIfCannotAutodetect(bool requiredDoubleStep, bool requiredHeads);
   void printGeometryInfo(BYTE track, BYTE head, BYTE interleave);

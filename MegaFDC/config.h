@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2024 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
 // Build and wiring configuration
 
 #pragma once
@@ -87,7 +87,7 @@
                                                   // min. 512B for FAT, and 1024 for 8" drive support and XMODEM-1K
                                                   // 1.44M disk image transfer thru XMODEM-1K vs bufsize: 3072 (3:45), 1024 (5:20), 512 (XMODEM-128, 10min)
 #else                                             // - IMD imager mode, works sector-by-sector:
-  #define SECTOR_BUFFER_SIZE   2048               // min. 2K, 4K will throw memory warning (can only format/verify 8K sector sizes but not R/W; not enough RAM)
+  #define SECTOR_BUFFER_SIZE   2048               // larger sectors (4K, 8K) can only be formatted/verified
 #endif
 
 #define IO_TIMEOUT             8500000            // number of (32bit) decrements in a while loop checking a response from the FDC; about 5 seconds 
