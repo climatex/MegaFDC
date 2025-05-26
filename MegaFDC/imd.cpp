@@ -22,6 +22,11 @@ void InitializeDrives()
   {
     ui->print(Progmem::getString(Progmem::imdLCDRecommended));  
   }
+  // no keyboard present
+  else if (g_uiEnabled == UI_LCD)
+  {
+    ui->print(Progmem::getString(Progmem::uiNoKeyboard));
+  }
     
   // check if the floppy controller is responding to a reset command
   ui->print(Progmem::getString(Progmem::uiInitializingFDC));

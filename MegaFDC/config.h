@@ -140,7 +140,7 @@
 // UI and FDC singletons - one UI and floppy controller per system
 extern volatile BYTE  g_rwBuffer[SECTOR_BUFFER_SIZE];
 extern          BYTE  g_path[MAX_PATH + 1];
-extern          bool  g_uiEnabled; 
+extern          BYTE  g_uiEnabled; 
 extern          BYTE  g_numberOfDrives;
 extern          FDC::DiskDriveMediaParams* g_diskDrives;
 extern          Ui*   ui;

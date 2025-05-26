@@ -41,6 +41,7 @@ public:
     // startup related   
     uiSplash,
     uiBuild,
+    uiNoKeyboard,
     uiInitializingFDC,
     uiDisabled1,
     uiDisabled2,
@@ -466,7 +467,8 @@ private:
   
 // startup related
   PROGMEM_STR m_uiSplash[]           PROGMEM = "MegaFDC (c) 2023-2025 J. Bogin\r\nRegular build, ";
-  PROGMEM_STR m_uiBuild[]            PROGMEM = "30 Mar 2025\r\n";
+  PROGMEM_STR m_uiBuild[]            PROGMEM = "26 May 2025\r\n";
+  PROGMEM_STR m_uiNoKeyboard[]       PROGMEM = "No keyboard, using serial input\r\n";
   PROGMEM_STR m_uiInitializingFDC[]  PROGMEM = "\r\nInitializing controller...";
   PROGMEM_STR m_uiDisabled1[]        PROGMEM = "- LCD and keyboard not enabled -";
   PROGMEM_STR m_uiDisabled2[]        PROGMEM = "Use switch to enable, then reset";
@@ -848,8 +850,8 @@ private:
                                                   m_uiDecimalInput, m_uiHexadecimalInput, m_uiBytes, m_uiOperationPending,
                                                   m_uiCancelOption, m_uiChooseOption,
 
-                                                  m_uiSplash, m_uiBuild, m_uiInitializingFDC, m_uiDisabled1, m_uiDisabled2,
-                                                  m_uiFatalError, m_uiSystemHalted, m_uiCtrlAltDel, m_uiLoadingConfig,
+                                                  m_uiSplash, m_uiBuild, m_uiNoKeyboard, m_uiInitializingFDC, m_uiDisabled1,
+                                                  m_uiDisabled2, m_uiFatalError, m_uiSystemHalted, m_uiCtrlAltDel, m_uiLoadingConfig,
                                                   m_uiLoadingAborted,
                                                   
                                                   m_errRQMTimeout, m_errRecalibrate, m_errSeek, m_errWriProtect,

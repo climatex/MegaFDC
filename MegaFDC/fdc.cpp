@@ -1156,7 +1156,7 @@ void FDC::fatalError(BYTE message)
   ui->print(Progmem::getString(Progmem::uiSystemHalted));
   
   // Ctrl+Alt+Delete
-  if (g_uiEnabled)
+  if (g_uiEnabled == UI_LCDKBD)
   {
     ui->print(Progmem::getString(Progmem::uiCtrlAltDel));
   }

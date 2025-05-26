@@ -108,7 +108,7 @@ void fatWriteTextFile(const BYTE* fileName)
   strcat(addPath, g_path);
   strcat(addPath, fileName);
   
-  FAT_EXECUTE(f_open(getFatFile(), addPath, FA_WRITE | FA_CREATE_NEW));
+  FAT_EXECUTE(f_open(getFatFile(), addPath, FA_WRITE | FA_OPEN_APPEND));
   
   // wait for ENTER keypress
   ui->print(Progmem::getString(Progmem::typeIntoCaption));

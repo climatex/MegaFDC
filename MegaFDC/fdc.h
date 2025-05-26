@@ -7,7 +7,7 @@
 
 // compile-time clock delay
 #define DELAY_CYCLES(n) __builtin_avr_delay_cycles(n);
-#define DELAY_MS(n)     DELAY_CYCLES(16000*n);
+#define DELAY_MS(n)     DELAY_CYCLES(16000UL*n);
 
 // FDC address registers
 #define DCR 2 // drive control register (W only)

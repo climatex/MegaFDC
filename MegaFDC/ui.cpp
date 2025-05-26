@@ -7,10 +7,10 @@
     
   U8G2_ST7920_128X64_F_8080 display(U8G2_R0, DISP_D0, DISP_D1, DISP_D2, DISP_D3, DISP_D4, DISP_D5, DISP_D6, DISP_D7, DISP_E, U8X8_PIN_NONE, DISP_RS, DISP_RST);
   PS2KeyAdvanced keyboard;
-  bool g_uiEnabled = true;
+  BYTE g_uiEnabled = UI_LCDKBD; 
   
 #else
-  bool g_uiEnabled = false;
+  BYTE g_uiEnabled = UI_DISABLED;
 #endif
 
 // reset by null pointer function call
@@ -41,19 +41,26 @@ Ui::Ui()
   
   // UI can be optionally switched off by pulling this pin low during startup
   pinMode(SWITCH_DISABLE_UI, INPUT_PULLUP);
-  g_uiEnabled = (digitalRead(SWITCH_DISABLE_UI) == HIGH);
+  if (digitalRead(SWITCH_DISABLE_UI) == LOW)
+  {
+    g_uiEnabled = UI_DISABLED;    
+  }
   
   // if compiled with support, but disabled by switch, just use this to display "LCD and keyboard unused"
   display.begin();
   display.setFont(UI_FONT);
-  
-  // start keyboard interrupt
+    
+  // UI_LCD or UI_LCDKBD
   if (g_uiEnabled)
-  {
-    keyboard.begin(KEYB_DATA, KEYB_CLK);
-    keyboard.resetKey();
-    keyboard.setLock(PS2_LOCK_NUM);
+  {   
+    // use serial input on no keyboard present
+    if (!detectKeyboard())
+    {
+      g_uiEnabled = UI_LCD;
+    }
   }
+  
+  // UI_DISABLED
   else
   {
     display.drawStr(0, 25, Progmem::getString(Progmem::uiDisabled1));
@@ -75,6 +82,41 @@ void Ui::reset()
   
   // software reset by null pointer function call
   resetBoard();
+}
+
+// detect keyboard during setup
+bool Ui::detectKeyboard()
+{ 
+#ifdef UI_ENABLED
+ 
+  BYTE attempts = 5;
+  while (attempts)
+  {
+    // re-initialize
+    pinMode(KEYB_CLK, OUTPUT);
+    digitalWrite(KEYB_CLK, HIGH);    
+    DELAY_MS(10);
+    
+    keyboard.begin(KEYB_DATA, KEYB_CLK);    
+    keyboard.resetKey(); // send 0xFF
+    
+    const DWORD timeBefore = millis();
+    while (millis() - timeBefore < 100)
+    {
+      if (keyboard.read())
+      {
+        // got a response, set NumLock
+        keyboard.setLock(PS2_LOCK_NUM);
+        return true;
+      }
+    }
+        
+    detachInterrupt(digitalPinToInterrupt(KEYB_CLK));
+    attempts--;
+  }
+   
+#endif
+  return false;
 }
 
 // prints a null terminated string, supporting printf variadics (str != getPrintBuffer())
@@ -260,11 +302,13 @@ BYTE Ui::readKey(const BYTE* allowedKeys, bool withWait)
   
   while(true)
   {
+    // blink the cursor on LCD during keyboard wait
+    blinkCursor();
     
-    // read keys through serial if UI not enabled
-    if (!g_uiEnabled)
-    {
-      int read = Serial.read();      
+    // read keys through serial?
+    if (g_uiEnabled != UI_LCDKBD)
+    { 
+      int read = Serial.read();
       if (read == -1)
       {
         READKEY_CHECK_WAIT;
@@ -308,8 +352,6 @@ BYTE Ui::readKey(const BYTE* allowedKeys, bool withWait)
 #ifndef UI_ENABLED
   }
 #else
-    // blink cursor during keyboard wait
-    blinkCursor();
     
     // read key information from physical keyboard
     WORD key = keyboard.read();   
@@ -466,29 +508,32 @@ const BYTE* Ui::prompt(BYTE maximumPromptLen, const BYTE* allowedKeys, bool escR
 void Ui::blinkCursor(bool skipTimer)
 {
 #ifdef UI_ENABLED
-  // 10Hz cursor blink during keyboard wait
-  static DWORD prevTime = millis();
-  
-  if (skipTimer || (millis() > prevTime+100))
+  if (g_uiEnabled)
   {
-    m_cursorFlipFlop = !m_cursorFlipFlop;    
-    display.setDrawColor(m_cursorFlipFlop ? 1 : 2);
+    // 10Hz cursor blink during keyboard wait
+    static DWORD prevTime = millis();
     
-    // normal behavior
-    if (m_currentColumn < MAX_COLS)
+    if (skipTimer || (millis() > prevTime+100))
     {
-      display.drawLine(m_cursorX, m_cursorY, m_cursorX+CHAR_WIDTH-2, m_cursorY);  
-    }
-    
-    // blink the cursor on the next line, if the display is not full
-    else if (m_cursorY < MAX_LINES*CHAR_HEIGHT)
-    {
-      display.drawLine(0, m_cursorY+CHAR_HEIGHT, CHAR_WIDTH-2, m_cursorY+CHAR_HEIGHT);
-    }
-    
-    display.setDrawColor(m_cursorFlipFlop ? 2 : 1);    
-    display.sendBuffer();    
-    prevTime = millis();
+      m_cursorFlipFlop = !m_cursorFlipFlop;    
+      display.setDrawColor(m_cursorFlipFlop ? 1 : 2);
+      
+      // normal behavior
+      if (m_currentColumn < MAX_COLS)
+      {
+        display.drawLine(m_cursorX, m_cursorY, m_cursorX+CHAR_WIDTH-2, m_cursorY);  
+      }
+      
+      // blink the cursor on the next line, if the display is not full
+      else if (m_cursorY < MAX_LINES*CHAR_HEIGHT)
+      {
+        display.drawLine(0, m_cursorY+CHAR_HEIGHT, CHAR_WIDTH-2, m_cursorY+CHAR_HEIGHT);
+      }
+      
+      display.setDrawColor(m_cursorFlipFlop ? 2 : 1);    
+      display.sendBuffer();    
+      prevTime = millis();
+    }  
   }
 #endif
 }

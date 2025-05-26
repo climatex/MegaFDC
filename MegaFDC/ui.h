@@ -4,6 +4,11 @@
 #pragma once
 #include "config.h"
 
+// UI modes:
+#define UI_DISABLED 0  // serial I/O
+#define UI_LCD      1  // serial input, display output
+#define UI_LCDKBD   2  // keyboard input, display output
+
 // next line pause - without delay on screen fill, since we waited for a key here
 #define NEXT_LINE_PAUSE if (g_uiEnabled && ui->isOnLastLine()) { \
                           ui->print(Progmem::getString(Progmem::uiContinue)); \
@@ -43,6 +48,8 @@ public:
   
 private:  
   Ui();
+  
+  bool detectKeyboard();
   BYTE xlateShift(BYTE key);
   void blinkCursor(bool skipTimer = false);
   
