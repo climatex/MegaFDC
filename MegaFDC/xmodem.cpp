@@ -96,21 +96,21 @@ bool xmodemImageRxCallback(DWORD no, BYTE* data, WORD size)
     }
 
     // convert current position to CHS    
-    BYTE track;
+    BYTE cyl;
     BYTE head;
     BYTE startSector;
-    fdc->convertLogicalSectorToCHS(totalSectorsCount, track, head, startSector);
+    fdc->convertLogicalSectorToCHS(totalSectorsCount, cyl, head, startSector);
     
     // how many sectors till end of track or SECTOR_BUFFER_SIZE constraint
     const BYTE sectorCount = fdc->getMaximumSectorCountForRW(startSector, SECTOR_BUFFER_SIZE - xmRWPos);
     const BYTE endSector = startSector + sectorCount-1;
     
-    ui->print(Progmem::getString(Progmem::diskIoProgress), track, head);
+    ui->print(Progmem::getString(Progmem::diskIoProgress), cyl, head);
     
-    // seek if needed, inform about track and head
-    if ((fdc->getCurrentTrack() != track) || (fdc->getCurrentHead() != head))
+    // seek if needed, inform about cyl and head
+    if ((fdc->getCurrentCylinder() != cyl) || (fdc->getCurrentHead() != head))
     {
-      fdc->seekDrive(track, head);      
+      fdc->seekDrive(cyl, head);      
     }
     
     // write    
@@ -150,19 +150,19 @@ bool xmodemImageTxCallback(DWORD no, BYTE* data, WORD size)
       break;
     }
             
-    BYTE track;
+    BYTE cyl;
     BYTE head;
     BYTE startSector;
-    fdc->convertLogicalSectorToCHS(totalSectorsCount, track, head, startSector);
+    fdc->convertLogicalSectorToCHS(totalSectorsCount, cyl, head, startSector);
     
     const BYTE sectorCount = fdc->getMaximumSectorCountForRW(startSector, SECTOR_BUFFER_SIZE - xmRWPos);
     const BYTE endSector = startSector + sectorCount-1;
     
-    ui->print(Progmem::getString(Progmem::diskIoProgress), track, head);
+    ui->print(Progmem::getString(Progmem::diskIoProgress), cyl, head);
     
-    if ((fdc->getCurrentTrack() != track) || (fdc->getCurrentHead() != head))
+    if ((fdc->getCurrentCylinder() != cyl) || (fdc->getCurrentHead() != head))
     {
-      fdc->seekDrive(track, head);
+      fdc->seekDrive(cyl, head);
     }
        
     fdc->readWriteSectors(false, startSector, endSector, &xmRWPos);

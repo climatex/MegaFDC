@@ -164,18 +164,18 @@ bool cpmVerifyDirFileName(const BYTE* cpmFileName)
 bool cpmReadWriteSector(bool write, WORD logicalAddress)
 {
   // logical sector starts at 0, CHS starts at 0/0/1
-  BYTE track;
+  BYTE cyl;
   BYTE head; // 0
   BYTE sector;
-  fdc->convertLogicalSectorToCHS(logicalAddress, track, head, sector);
+  fdc->convertLogicalSectorToCHS(logicalAddress, cyl, head, sector);
   
   // apply 6:1 interleave from progmem table
   sector = Progmem::cpmSkewSector(sector);
   
   // seek if necessary
-  if ((fdc->getCurrentTrack() != track) || (fdc->getCurrentHead() != head))
+  if ((fdc->getCurrentCylinder() != cyl) || (fdc->getCurrentHead() != head))
   {
-    fdc->seekDrive(track, head);
+    fdc->seekDrive(cyl, head);
   }
   
   // read/write

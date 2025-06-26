@@ -850,7 +850,7 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
   if (drive->DriveInches == 8)
   {
     // values common to all 8"
-    drive->Tracks = 77;
+    drive->Cylinders = 77;
     drive->CommRate = 500;
     
     ui->print("");
@@ -912,7 +912,7 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
     drive->SectorSizeBytes = 512;
     
     // except 1.2M
-    drive->Tracks = 40;
+    drive->Cylinders = 40;
     drive->GapLength = 0x2A;
     drive->Gap3Length = 0x50;
     drive->CommRate = 250;
@@ -926,7 +926,7 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
     // one side: 160K, 180K formats (8 and 9 spt)
     if (drive->Heads == 1)
     {
-      drive->Tracks = 40;
+      drive->Cylinders = 40;
       drive->CommRate = 250;
       drive->FATRootDirEntries = 64;
       drive->FATClusterSizeBytes = 512;
@@ -963,7 +963,7 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
         drive->DiskChangeLineSupport = true;
         drive->SectorsPerTrack = 15;
         drive->CommRate = 500;
-        drive->Tracks = 80;
+        drive->Cylinders = 80;
         drive->GapLength = 0x1B;
         drive->Gap3Length = 0x54;
         drive->FATMediaDescriptor = 0xF9;
@@ -974,7 +974,7 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
     }
     
     // turn on double stepping and switch transfer rate to 300 if the DD disk is in an HD drive
-    if (drive->Tracks == 40)
+    if (drive->Cylinders == 40)
     {
       ui->print(Progmem::getString(Progmem::drive5InDoubleStep));
       key = toupper(ui->readKey("YN"));
@@ -994,7 +994,7 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
     drive->UseFAT12 = true;
     drive->DiskChangeLineSupport = true;
     drive->SectorSizeBytes = 512;
-    drive->Tracks = 80;
+    drive->Cylinders = 80;
     drive->Heads = 2;
     
     // 720K (9spt DD), 1.44MB (18spt HD)
@@ -1065,14 +1065,14 @@ void SetDriveParametersAdvanced(FDC::DiskDriveMediaParams* drive)
   drive->DiskChangeLineSupport = (key == 'Y');
   ui->print(Progmem::getString(Progmem::uiEchoKey), key); 
   
-  // get number of tracks (valid: 1-100)
+  // get number of cylinders (valid: 1-100)
   while(true)
   {
-    ui->print(Progmem::getString(Progmem::customTracks));
-    WORD tracks = (WORD)atoi(ui->prompt(3, Progmem::getString(Progmem::uiDecimalInput))); // input max 3 characters
-    if ((tracks > 0) && (tracks <= 100))
+    ui->print(Progmem::getString(Progmem::customCyls));
+    WORD cyls = (WORD)atoi(ui->prompt(3, Progmem::getString(Progmem::uiDecimalInput))); // input max 3 characters
+    if ((cyls > 0) && (cyls <= 100))
     {
-      drive->Tracks = (BYTE)tracks;
+      drive->Cylinders = (BYTE)cyls;
       ui->print(Progmem::getString(Progmem::uiNewLine));
       break;
     }
@@ -1627,7 +1627,7 @@ void CommandDRIVPARM(FDC::DiskDriveMediaParams* drive)
   ui->print(Progmem::getString(Progmem::uiNewLine)); NEXT_LINE_PAUSE;
   
   // CHS and sector size
-  ui->print(Progmem::getString(Progmem::drivParmTracks), drive->Tracks);
+  ui->print(Progmem::getString(Progmem::drivParmCyls), drive->Cylinders);
   ui->print(Progmem::getString(Progmem::uiNewLine)); NEXT_LINE_PAUSE;
   ui->print(Progmem::getString(Progmem::drivParmHeads));
   ui->print(Progmem::getString((drive->Heads == 1) ? Progmem::drivParmHeadsOne : Progmem::drivParmHeadsTwo));
@@ -1781,12 +1781,12 @@ void CommandFORMAT(FDC::DiskDriveMediaParams* drive)
   const WORD trackBytes = fdc->getParams()->SectorSizeBytes * fdc->getParams()->SectorsPerTrack;
   WORD badTracks = 0;
   BYTE head = 0;
-  BYTE track = 0; 
+  BYTE cyl = 0; 
   
-  while(track < fdc->getParams()->Tracks)
+  while(cyl < fdc->getParams()->Cylinders)
   {
-    ui->print(Progmem::getString(Progmem::diskIoProgress), track, head);
-    fdc->seekDrive(track, head);    
+    ui->print(Progmem::getString(Progmem::diskIoProgress), cyl, head);
+    fdc->seekDrive(cyl, head);    
     fdc->formatTrack();
     
     const bool formatError = fdc->getLastError();
@@ -1813,7 +1813,7 @@ void CommandFORMAT(FDC::DiskDriveMediaParams* drive)
       else if (fdc->getLastError() || (successfulBytesRead != trackBytes))
       {
         // failed on track zero? break now
-        if (track == 0)
+        if (cyl == 0)
         {
           break;
         }
@@ -1831,14 +1831,14 @@ void CommandFORMAT(FDC::DiskDriveMediaParams* drive)
     }
     
     head = 0;
-    track++;
+    cyl++;
   }
   
   ui->print(Progmem::getString(Progmem::uiNewLine));
   
   // if track 0 bad, do not write filesystem
-  bool finishedOk = !fdc->getLastError() && (fdc->getParams()->Tracks == track); 
-  bool track0Bad = !finishedOk && (track == 0) && !fdc->wasErrorNoDiskInDrive() && !fdc->wasErrorDiskProtected();  
+  bool finishedOk = !fdc->getLastError() && (fdc->getParams()->Cylinders == cyl); 
+  bool track0Bad = !finishedOk && (cyl == 0) && !fdc->wasErrorNoDiskInDrive() && !fdc->wasErrorDiskProtected();  
   if (track0Bad)
   {
     ui->print(Progmem::getString(Progmem::errTrack0Error));
@@ -1905,12 +1905,12 @@ void CommandVERIFY(FDC::DiskDriveMediaParams* drive)
   const WORD trackBytes = fdc->getParams()->SectorSizeBytes * fdc->getParams()->SectorsPerTrack;
   WORD badTracks = 0;
   BYTE head = 0;
-  BYTE track = 0;
+  BYTE cyl = 0;
   
-  while(track < fdc->getParams()->Tracks)
+  while(cyl < fdc->getParams()->Cylinders)
   {
-    ui->print(Progmem::getString(Progmem::diskIoProgress), track, head);
-    fdc->seekDrive(track, head);    
+    ui->print(Progmem::getString(Progmem::diskIoProgress), cyl, head);
+    fdc->seekDrive(cyl, head);    
     
     const WORD successfulBytesRead = fdc->verify();
     if (fdc->wasErrorNoDiskInDrive())
@@ -1920,7 +1920,7 @@ void CommandVERIFY(FDC::DiskDriveMediaParams* drive)
     
     else if (fdc->getLastError() || (successfulBytesRead != trackBytes))
     {     
-      if (track == 0)
+      if (cyl == 0)
       {
         break;
       }
@@ -1935,13 +1935,13 @@ void CommandVERIFY(FDC::DiskDriveMediaParams* drive)
     }
     
     head = 0;       
-    track++;
+    cyl++;
   }
   
   ui->print(Progmem::getString(Progmem::uiNewLine));
   
-  bool finishedOk = !fdc->getLastError() && (fdc->getParams()->Tracks == track); 
-  bool track0Bad = !finishedOk && (track == 0) && !fdc->wasErrorNoDiskInDrive() && !fdc->wasErrorDiskProtected();  
+  bool finishedOk = !fdc->getLastError() && (fdc->getParams()->Cylinders == cyl); 
+  bool track0Bad = !finishedOk && (cyl == 0) && !fdc->wasErrorNoDiskInDrive() && !fdc->wasErrorDiskProtected();  
   if (track0Bad)
   {
     ui->print(Progmem::getString(Progmem::errTrack0Error));
@@ -1982,7 +1982,7 @@ void CommandIMAGE(FDC::DiskDriveMediaParams* drive)
   // options: read from disk to image, write disk from image, cancel 
   ui->print("");  
   ui->print(Progmem::getString(Progmem::imageTransferLen), (DWORD)fdc->getTotalSectorCount() * fdc->getParams()->SectorSizeBytes);
-  ui->print(Progmem::getString(Progmem::imageGeometry), fdc->getParams()->Tracks, fdc->getParams()->Heads,
+  ui->print(Progmem::getString(Progmem::imageGeometry), fdc->getParams()->Cylinders, fdc->getParams()->Heads,
                                                         fdc->getParams()->SectorsPerTrack, fdc->getParams()->SectorSizeBytes);
   ui->print(Progmem::getString(Progmem::imageReadDisk), chosenDrive + 65);
   ui->print(Progmem::getString(Progmem::imageWriteDisk), chosenDrive + 65);

@@ -166,7 +166,7 @@ public:
     drive3Inch_288,
     
     specifyingAll,
-    customTracks,
+    customCyls,
     customDoubleStep,
     customChangeline,
     customHeads,
@@ -214,7 +214,7 @@ public:
     drivParmSRT,
     drivParmHLT,
     drivParmHUT,
-    drivParmTracks,
+    drivParmCyls,
     drivParmHeads,
     drivParmHeadsOne,
     drivParmHeadsTwo,
@@ -309,7 +309,7 @@ public:
     imdLCDRecommended,
     imdDriveLetter,
     imdDriveType,
-    imdDriveTracks,
+    imdDriveCyls,
     imdDoubleStepAuto,
     imdDoubleStep,
     imdDiskSidesAuto,
@@ -370,6 +370,8 @@ public:
     imdUseSameParams,
     imdFormatParams,
     imdFormatSpt,
+    imdFormatStartSec1,
+    imdFormatStartSec2,
     imdFormatEncoding,
     imdFormatRate,
     imdFormatRatesMFM,
@@ -392,7 +394,7 @@ public:
     imdXmodemErrPacket,
     imdXmodemErrHeader,
     imdXmodemErrMode,
-    imdXmodemErrTrack,
+    imdXmodemErrCyls,
     imdXmodemErrHead,
     imdXmodemErrSpt,
     imdXmodemErrSsize,
@@ -467,7 +469,7 @@ private:
   
 // startup related
   PROGMEM_STR m_uiSplash[]           PROGMEM = "MegaFDC (c) 2023-2025 J. Bogin\r\nRegular build, ";
-  PROGMEM_STR m_uiBuild[]            PROGMEM = "26 May 2025\r\n";
+  PROGMEM_STR m_uiBuild[]            PROGMEM = "26 Jun 2025\r\n";
   PROGMEM_STR m_uiNoKeyboard[]       PROGMEM = "No keyboard, using serial input\r\n";
   PROGMEM_STR m_uiInitializingFDC[]  PROGMEM = "\r\nInitializing controller...";
   PROGMEM_STR m_uiDisabled1[]        PROGMEM = "- LCD and keyboard not enabled -";
@@ -597,7 +599,7 @@ private:
 
 // init drives command with non standard geometry - asks everything. colon right parenthesis
   PROGMEM_STR m_specifyingAll[]      PROGMEM = "Specifying all parameters for %c:\r\n";
-  PROGMEM_STR m_customTracks[]       PROGMEM = "Tracks (1-100): ";
+  PROGMEM_STR m_customCyls[]         PROGMEM = "Cylinders (1-100): ";
   PROGMEM_STR m_customDoubleStep[]   PROGMEM = "Drive double stepping? Y/N: ";
   PROGMEM_STR m_customChangeline[]   PROGMEM = "DiskChange signal? Y/N: ";
   PROGMEM_STR m_customHeads[]        PROGMEM = "Heads (1 or 2): ";
@@ -645,7 +647,7 @@ private:
   PROGMEM_STR m_drivParmSRT[]        PROGMEM = "Drive step rate time   %u ms";
   PROGMEM_STR m_drivParmHLT[]        PROGMEM = "Drive head load time   %u ms";
   PROGMEM_STR m_drivParmHUT[]        PROGMEM = "Drive head unload time %u ms";
-  PROGMEM_STR m_drivParmTracks[]     PROGMEM = "Tracks (cylinders)     %u";
+  PROGMEM_STR m_drivParmCyls[]       PROGMEM = "Cylinders              %u";
   PROGMEM_STR m_drivParmHeads[]      PROGMEM = "Heads (sides)          ";
   PROGMEM_STR m_drivParmHeadsOne[]   PROGMEM = "one";
   PROGMEM_STR m_drivParmHeadsTwo[]   PROGMEM = "two";
@@ -679,7 +681,7 @@ private:
   PROGMEM_STR m_diskIoInsertDisk[]   PROGMEM = "Insert disk into drive %c:";
   PROGMEM_STR m_diskIoTotalBadSect[] PROGMEM = "Total bad sectors: %u";
   PROGMEM_STR m_diskIoTotalBadTrk[]  PROGMEM = "Tracks with bad sectors: %u";
-  PROGMEM_STR m_diskIoProgress[]     PROGMEM = "\rTrack: %02d Head: %d ";
+  PROGMEM_STR m_diskIoProgress[]     PROGMEM = "\rCylinder: %02d Head: %d ";
   PROGMEM_STR m_diskIoQuickFormat[]  PROGMEM = "Quick-format drive %c:? Y/N: ";
   PROGMEM_STR m_diskIoCreatingFAT[]  PROGMEM = "Creating FAT12 filesystem...";
   PROGMEM_STR m_diskIoCreatingCPM[]  PROGMEM = "Creating CP/M filesystem...";
@@ -740,7 +742,7 @@ private:
   PROGMEM_STR m_imdLCDRecommended[]  PROGMEM = "LCD output recommended!\r\n";
   PROGMEM_STR m_imdDriveLetter[]     PROGMEM = "Drive (A): (B): (C): (D): ";
   PROGMEM_STR m_imdDriveType[]       PROGMEM = "Type (8)\" (5).25\" (3).5\": ";
-  PROGMEM_STR m_imdDriveTracks[]     PROGMEM = "Maximum tracks (1-100): ";  
+  PROGMEM_STR m_imdDriveCyls[]       PROGMEM = "Maximum cylinders (1-100): ";  
   PROGMEM_STR m_imdDoubleStepAuto[]  PROGMEM = "Double stepping? Y/N/Guess: ";
   PROGMEM_STR m_imdDoubleStep[]      PROGMEM = "Drive double stepping? Y/N: ";
   PROGMEM_STR m_imdDiskSidesAuto[]   PROGMEM = "Force single-sided? Y/N: ";
@@ -788,7 +790,7 @@ private:
   PROGMEM_STR m_imdDiskReadFail[]    PROGMEM = "\r\nNo sector IDs on disk";
   PROGMEM_STR m_imdSyncSectorFail[]  PROGMEM = "\r\nCannot sync with disk";
 
-  PROGMEM_STR m_imdGeoCylsHdStep[]   PROGMEM = " max %u trk %u side";
+  PROGMEM_STR m_imdGeoCylsHdStep[]   PROGMEM = " max %u cyl %u side";
   PROGMEM_STR m_imdSingleStepping[]  PROGMEM = "Singlestep";
   PROGMEM_STR m_imdDoubleStepping[]  PROGMEM = "Doublestep";
   PROGMEM_STR m_imdInterleaveGaps[]  PROGMEM = "Interleave %u:1, gaps ";
@@ -796,11 +798,13 @@ private:
   PROGMEM_STR m_imdGeoGapSizesUser[] PROGMEM = "custom\r\n";
   PROGMEM_STR m_imdGeoChsSpt[]       PROGMEM = "CHS %02u/%u/%02ux%-4uB sect GAP 0x%02X\r\n";
   PROGMEM_STR m_imdGeoRateGap3[]     PROGMEM = "Datarate %ukbps %3s, GAP3 0x%02X\r\n";
-  PROGMEM_STR m_imdProgress[]        PROGMEM = "\rTrack: %02u Head: %u ";
+  PROGMEM_STR m_imdProgress[]        PROGMEM = "\rCylinder: %02u Head: %u ";
 
   PROGMEM_STR m_imdUseSameParams[]   PROGMEM = "Same settings as before? Y/N: ";
   PROGMEM_STR m_imdFormatParams[]    PROGMEM = "Format parameters (Esc quits):\r\n\r\n";
   PROGMEM_STR m_imdFormatSpt[]       PROGMEM = "Sectors per track (1-63): ";
+  PROGMEM_STR m_imdFormatStartSec1[] PROGMEM = "Sectors normally start at 1.\r\n";                                               
+  PROGMEM_STR m_imdFormatStartSec2[] PROGMEM = "Starting sector (0-%u): ";
   PROGMEM_STR m_imdFormatEncoding[]  PROGMEM = "Data encoding (M)FM / (F)M: ";  
   PROGMEM_STR m_imdFormatRate[]      PROGMEM = "Select media data rate:\r\n";
   PROGMEM_STR m_imdFormatRatesMFM[]  PROGMEM = "(2)50 (3)00 (5)00 kbps MFM: ";
@@ -823,7 +827,7 @@ private:
   PROGMEM_STR m_imdXmodemErrPacket[] PROGMEM = "Invalid XMODEM data packet\r\n";
   PROGMEM_STR m_imdXmodemErrHeader[] PROGMEM = "Invalid header in file\r\n";
   PROGMEM_STR m_imdXmodemErrMode[]   PROGMEM = "IMD Mode byte must be 0-5\r\n";
-  PROGMEM_STR m_imdXmodemErrTrack[]  PROGMEM = "More tracks than configured\r\n";
+  PROGMEM_STR m_imdXmodemErrCyls[]   PROGMEM = "More cyls than configured\r\n";
   PROGMEM_STR m_imdXmodemErrHead[]   PROGMEM = "Heads (sides) must be 0-1\r\n";
   PROGMEM_STR m_imdXmodemErrSpt[]    PROGMEM = "Sectors per track must be <64\r\n";
   PROGMEM_STR m_imdXmodemErrSsize[]  PROGMEM = "Sector size byte must be 0-6\r\n";
@@ -889,7 +893,7 @@ private:
                                                   m_drive5InchSides, m_drive5InchSSDD, m_drive5Inch, 
                                                   m_drive5InDoubleStep, m_drive3Inch, m_drive3Inch_288,
                                                   
-                                                  m_specifyingAll, m_customTracks, m_customDoubleStep, m_customChangeline,
+                                                  m_specifyingAll, m_customCyls, m_customDoubleStep, m_customChangeline,
                                                   m_customHeads, m_customSpt, m_customSectorSize, m_customSectorGap,
                                                   m_customFormatGap3, m_customFormatFiller, m_customEncoding,
                                                   m_customDataRateSel, m_custom8InchEnc, m_custom5InchFM, m_custom5InchMFM,
@@ -902,7 +906,7 @@ private:
                                                   m_drivParmCaption, m_drivParmTypeText, m_drivParmType8SD, m_drivParmType8DD,
                                                   m_drivParmType5DD, m_drivParmType5HD, m_drivParmType3DD, m_drivParmType3HD, m_drivParmType3ED,
                                                   m_drivParmDoubleStep, m_drivParmDiskChange, m_drivParmSRT, m_drivParmHLT,
-                                                  m_drivParmHUT, m_drivParmTracks, m_drivParmHeads, m_drivParmHeadsOne,
+                                                  m_drivParmHUT, m_drivParmCyls, m_drivParmHeads, m_drivParmHeadsOne,
                                                   m_drivParmHeadsTwo, m_drivParmSpt,  m_drivParmSectorSize, m_drivParmEncoding,
                                                   m_drivParmFM, m_drivParmMFM, m_drivParmDataRate, m_drivParmFDCRate,
                                                   m_drivParmKbps, m_drivParmMbps, m_drivParmSectorGap, m_drivParmFormatGap,
@@ -931,7 +935,7 @@ private:
                                                   m_fsMemoryError, m_fsInvalidParameter, m_fsCPMFileNotFound, m_fsCPMFileEmpty,
                                                   m_fsCPMNoFilesFound                                                  
 #else
-                                                  m_imdSplash, m_imdLCDRecommended, m_imdDriveLetter, m_imdDriveType, m_imdDriveTracks,
+                                                  m_imdSplash, m_imdLCDRecommended, m_imdDriveLetter, m_imdDriveType, m_imdDriveCyls,
                                                   m_imdDoubleStepAuto, m_imdDoubleStep, m_imdDiskSidesAuto, m_imdDiskSides, m_imdInterleave, 
                                                   m_imdSectorGap, m_imdFormatGap, m_imdAdvancedDetails, m_imdDefaultsNo,
                                                   m_imdXlate300kbps, m_imdSpecifyOptions, m_imdSpecifyOptions2, m_imdEscGoBack,
@@ -950,13 +954,14 @@ private:
                                                   m_imdGeoGapSizesAuto, m_imdGeoGapSizesUser, m_imdGeoChsSpt, m_imdGeoRateGap3,
                                                   m_imdProgress,
                                                   
-                                                  m_imdUseSameParams, m_imdFormatParams, m_imdFormatSpt, m_imdFormatEncoding, m_imdFormatRate,
-                                                  m_imdFormatRatesMFM, m_imdFormatRatesFM, m_imdFormatSecSize1, m_imdFormatSecSize2, 
-                                                  m_imdFormatSecSize3, m_imdBadSectorsDisk, m_imdBadSectorsFile,
+                                                  m_imdUseSameParams, m_imdFormatParams, m_imdFormatSpt, m_imdFormatStartSec1,
+                                                  m_imdFormatStartSec2, m_imdFormatEncoding, m_imdFormatRate, m_imdFormatRatesMFM,
+                                                  m_imdFormatRatesFM, m_imdFormatSecSize1, m_imdFormatSecSize2, m_imdFormatSecSize3,
+                                                  m_imdBadSectorsDisk, m_imdBadSectorsFile,
                                                   
                                                   m_imdXmodem, m_imdXmodem1k, m_imdXmodemUse1k, m_imdXmodemSkipBad, m_imdXmodemVerify, 
                                                   m_imdXmodemWaitSend, m_imdXmodemWaitRecv, m_imdXmodemXferEnd, m_imdXmodemXferFail,                                                  
-                                                  m_imdXmodemErrPacket, m_imdXmodemErrHeader, m_imdXmodemErrMode, m_imdXmodemErrTrack, 
+                                                  m_imdXmodemErrPacket, m_imdXmodemErrHeader, m_imdXmodemErrMode, m_imdXmodemErrCyls, 
                                                   m_imdXmodemErrHead, m_imdXmodemErrSpt, m_imdXmodemErrSsize, m_imdXmodemLowRAM,
                                                   m_imdXmodemErrData,
                                                   

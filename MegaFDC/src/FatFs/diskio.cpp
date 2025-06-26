@@ -38,15 +38,15 @@ DRESULT disk_read(BYTE pdrv, BYTE *buf, DWORD sec, UINT count)
     return RES_PARERR;
   }
   
-  BYTE track;
+  BYTE cyl;
   BYTE head;
   BYTE sector;
-  fdc->convertLogicalSectorToCHS(sec, track, head, sector);
+  fdc->convertLogicalSectorToCHS(sec, cyl, head, sector);
   
   // seek, if necessary
-  if ((fdc->getCurrentTrack() != track) || (fdc->getCurrentHead() != head))
+  if ((fdc->getCurrentCylinder() != cyl) || (fdc->getCurrentHead() != head))
   {
-    fdc->seekDrive(track, head);
+    fdc->seekDrive(cyl, head);
   }
     
   // read 1 sector
@@ -74,16 +74,16 @@ DRESULT disk_write(BYTE pdrv, BYTE *buf, DWORD sec, UINT count)
     return RES_PARERR;
   }
   
-  BYTE track;
+  BYTE cyl;
   BYTE head;
   BYTE sector;
-  fdc->convertLogicalSectorToCHS(sec, track, head, sector);
+  fdc->convertLogicalSectorToCHS(sec, cyl, head, sector);
   
   memcpy(g_rwBuffer, buf, fdc->getParams()->SectorSizeBytes);
   
-  if ((fdc->getCurrentTrack() != track) || (fdc->getCurrentHead() != head))
+  if ((fdc->getCurrentCylinder() != cyl) || (fdc->getCurrentHead() != head))
   {
-    fdc->seekDrive(track, head);
+    fdc->seekDrive(cyl, head);
   }
     
   // write

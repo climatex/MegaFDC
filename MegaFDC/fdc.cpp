@@ -42,7 +42,7 @@ ISR(TIMER5_COMPA_vect)
 // singleton
 FDC::FDC()
 {   
-  // means: floppy controller successfully reset and drive can be seeked to track 0
+  // means: floppy controller successfully reset and drive can be seeked to cylinder 0
   m_initialized = false;
   
   m_params = NULL;  
@@ -59,7 +59,7 @@ FDC::FDC()
   m_specialFeatures = 0;
    
   // current physical CHS values
-  m_currentTrack = 0;
+  m_currentCylinder = 0;
   m_currentHead = 0;
   m_currentSector = 1;  
    
@@ -410,7 +410,7 @@ void FDC::recalibrateDrive()
     // 0x8 Sense interrupt status & retrieve results
     sendCommand(8);
     BYTE st0 = getData(); // status register 0
-    BYTE currentTrack = getData();
+    BYTE currentCylinder = getData();
 
     // was seek successful?
     if (st0 & 0x20)
@@ -424,7 +424,7 @@ void FDC::recalibrateDrive()
       else
       {
         // success, we're at track 0
-        if (currentTrack == 0)         
+        if (currentCylinder == 0)         
         {
           // ready and idle
           m_initialized = true;
@@ -482,7 +482,7 @@ void FDC::motorOff()
   }  
 }
 
-void FDC::seekDrive(BYTE track, BYTE head)
+void FDC::seekDrive(BYTE cylinder, BYTE head)
 { 
   if (!m_params)
   {
@@ -494,7 +494,7 @@ void FDC::seekDrive(BYTE track, BYTE head)
     recalibrateDrive();
   }
   
-  // seek the drive heads carriage to given physical track (cylinder) and select head (disk side)
+  // seek the drive heads carriage to given physical cylinder and select head (disk side)
   m_idle = false;
   motorOn();
   setInterrupt();
@@ -511,19 +511,19 @@ void FDC::seekDrive(BYTE track, BYTE head)
     // seek with double stepping?
     if (m_params->DoubleStepping)
     {
-      track *= 2;
+      cylinder *= 2;
     }
     
     // 0xF Seek
     sendCommand(0xF);
     sendData((head << 2) | m_params->DriveNumber); // head and drive
-    sendData(track);
+    sendData(cylinder);
     waitForINT();
     
     // 0x8 Sense interrupt
     sendCommand(8);
     BYTE st0 = getData();
-    BYTE seekedTrack = getData();
+    BYTE seekedCyl = getData();
     
     // seek successful ?
     if (st0 & 0x20)
@@ -536,24 +536,24 @@ void FDC::seekDrive(BYTE track, BYTE head)
       
       else
       {
-        // not on our track
-        if (track != seekedTrack)
+        // not on our cylinder
+        if (cylinder != seekedCyl)
         {
           continue;
         }
         
-        // success, store current track and head
+        // success, store current cylinder and head
         else
         {
-          // if double stepping, store the actual media track number
-          m_currentTrack = m_params->DoubleStepping ? track/2 : track;
+          // if double stepping, store the actual media number
+          m_currentCylinder = m_params->DoubleStepping ? cylinder/2 : cylinder;
           m_currentHead = head;
           
           m_lastError = false;
           m_idle = true;
           
           // handle optional TG43 line on PD7
-          if (m_currentTrack > 42)
+          if (m_currentCylinder > 42)
           {
             PORTD &= 0x7F; //TG43 on
           }
@@ -572,21 +572,19 @@ void FDC::seekDrive(BYTE track, BYTE head)
   fatalError(Progmem::errSeek);
 }
 
-WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector, WORD* dataPosition, bool deleted, BYTE* overrideTrack, BYTE* overrideHead)
+WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector, WORD* dataPosition, bool deleted, BYTE* overrideCyl, BYTE* overrideHead)
 {
-  // reads/writes chosen sector off current track and head to/from ioBuffer
+  // reads/writes chosen sector off current cylinder and head to/from ioBuffer
   // writeOperation false: read, true: write
-  // startSector: initial sector number (1-based)
-  // endSector: ending sector number (1-based) or getMaximumSectorCountForRW() for maximum possible
+  // startSector: initial sector number
+  // endSector: ending sector number or getMaximumSectorCountForRW() for maximum possible
   // dataPosition: custom dataPos starting index (optional)
   // deleted: read or write deleted data mark (optional, false by default)
-  // overrideTrack, overrideHead: logical sector information differs from what's in the current physical track (non-standard disks)
+  // overrideCyl, overrideHead: logical sector information differs from what's in the current physical track (non-standard disks)
   // returns: bytes successfully read or written
    
   // sanity checks
-  if (!m_params ||
-      !startSector ||
-      (startSector > endSector))
+  if (!m_params || (startSector > endSector))
   {
     return 0;
   }
@@ -609,10 +607,10 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
   if (!m_initialized || m_lastError)
   {
     recalibrateDrive();
-    seekDrive(m_currentTrack, m_currentHead);
+    seekDrive(m_currentCylinder, m_currentHead);
   }
   
-  // seek to the proper track must be already done
+  // seek to the proper cylinder must be already done
   m_idle = false;
   m_noDiskInDrive = false; // reset this flag, to be determined now
   motorOn();
@@ -623,7 +621,7 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
     if (retries)
     {      
       recalibrateDrive();
-      seekDrive(m_currentTrack, m_currentHead);
+      seekDrive(m_currentCylinder, m_currentHead);
       m_idle = false;
     }
     
@@ -636,12 +634,12 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
     // set longitudinal or perpendicular mode
     setRecordingMode();
     
-    // supplied track or head number differs from the physical we're currently at?
-    BYTE currentTrack = m_currentTrack;
+    // supplied cylinder or head number differs from the physical we're currently at?
+    BYTE currentCylinder = m_currentCylinder;
     BYTE currentHead = m_currentHead;
-    if (overrideTrack)
+    if (overrideCyl)
     {
-      currentTrack = *overrideTrack;
+      currentCylinder = *overrideCyl;
     }
     if (overrideHead)
     {
@@ -657,7 +655,7 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
     }
     sendCommand(command);
     sendData((m_currentHead << 2) | m_params->DriveNumber); // physical head and drive
-    sendData(currentTrack); // logical track
+    sendData(currentCylinder); // logical cylinder
     sendData(currentHead); // logical head
     sendData(startSector); // which sector to read
     sendData(convertSectorSize(m_params->SectorSizeBytes));  // sector size 0 to 5, 128B to 4096B
@@ -682,7 +680,7 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
     BYTE st1 = getData();
     BYTE st2 = getData();
     
-    // track, head, sector number and size
+    // cylinder, head, sector number and size
     getData();
     getData();
     m_currentSector = getData();
@@ -710,7 +708,7 @@ WORD FDC::readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector
   return 0;
 }
 
-BYTE* FDC::getInterleaveTable(BYTE sectorsPerTrack, BYTE interleave)
+BYTE* FDC::getInterleaveTable(BYTE sectorsPerTrack, BYTE interleave, BYTE startSector)
 {
   // compute custom interleave table (1-based indexing)
   BYTE* result = new BYTE[sectorsPerTrack + 1];
@@ -741,24 +739,41 @@ BYTE* FDC::getInterleaveTable(BYTE sectorsPerTrack, BYTE interleave)
       }
     }
   }
+  
+  // if starting sector is not one, adjust values in the interleave table accordingly
+  if (startSector != 1)
+  {
+    for (pos = 1; pos <= sectorsPerTrack; pos++)
+    {
+      if (startSector == 0)
+      {
+        result[pos] -= 1;
+      }
+      else
+      {
+        result[pos] += startSector-1;
+      }
+    }
+  }
 
   return result;
 }
 
-bool FDC::formatTrack(bool customCHSVTable, BYTE interleave)
+bool FDC::formatTrack(bool customCHSVTable, BYTE interleave, BYTE startSector)
 {  
-  // formats current physical track and head number (without bad sector verify)
+  // formats current physical track (without bad sector verify)
   // customCHSVTable: true if g_rwBuffer already contains the prepared 4-byte values (optional)
   // interleave: sector interleave factor, default 1:1 (optional)
+  // startSector: starting logical sector number, default 1 (optional)
   if (!m_params)
   {
     return false;
   }
   
-  m_currentSector = 1;
+  m_currentSector = startSector;
   if (!customCHSVTable)
   {
-    BYTE* interleaveTable = getInterleaveTable(m_params->SectorsPerTrack, interleave);
+    BYTE* interleaveTable = getInterleaveTable(m_params->SectorsPerTrack, interleave, startSector);
     if (!interleaveTable)
     {
       return false;
@@ -769,9 +784,9 @@ bool FDC::formatTrack(bool customCHSVTable, BYTE interleave)
     dataPos = 0;
     for (BYTE sector = 0; sector < m_params->SectorsPerTrack; sector++)
     {
-      g_rwBuffer[dataPos++] = m_currentTrack;                               // C
+      g_rwBuffer[dataPos++] = m_currentCylinder;                            // C
       g_rwBuffer[dataPos++] = m_currentHead;                                // H
-      g_rwBuffer[dataPos++] = interleaveTable[sector+1];                    // S (1-based)
+      g_rwBuffer[dataPos++] = interleaveTable[sector+1];                    // S (table index 1-based)
       g_rwBuffer[dataPos++] = convertSectorSize(m_params->SectorSizeBytes); // V (value of sector size, 0 to 6)
     }
     
@@ -781,7 +796,7 @@ bool FDC::formatTrack(bool customCHSVTable, BYTE interleave)
   if (!m_initialized || m_lastError)
   {
     recalibrateDrive();
-    seekDrive(m_currentTrack, m_currentHead);
+    seekDrive(m_currentCylinder, m_currentHead);
   }
   
   m_idle = false;
@@ -793,7 +808,7 @@ bool FDC::formatTrack(bool customCHSVTable, BYTE interleave)
     if (retries)
     {      
       recalibrateDrive();
-      seekDrive(m_currentTrack, m_currentHead);
+      seekDrive(m_currentCylinder, m_currentHead);
       m_idle = false;
     }
     
@@ -832,7 +847,17 @@ bool FDC::formatTrack(bool customCHSVTable, BYTE interleave)
     getData();
     getData();
     
-    if (processIOResult(st0, st1, st2, m_params->SectorsPerTrack))
+    BYTE endSector = m_params->SectorsPerTrack;
+    if (startSector == 0)
+    {
+      endSector--;
+    }
+    else if (startSector > 1)
+    {
+      endSector += startSector-1;
+    }
+    
+    if (processIOResult(st0, st1, st2, endSector))
     {
       m_diskChangeInquired = false; // data changed on disk; return disk changed yes when asked once
       return true; // no errors during I/O
@@ -848,23 +873,37 @@ bool FDC::formatTrack(bool customCHSVTable, BYTE interleave)
   return false;
 }
 
-WORD FDC::verify(BYTE sector, bool wholeTrack, BYTE* overrideTrack, BYTE* overrideHead)
+WORD FDC::verify(BYTE sector, bool wholeTrack, BYTE* overrideCyl, BYTE* overrideHead)
 {
   // reads sector(s) without storing the buffer  
   // overrideTrack, overrideHead: logical sector information differs from what's in the current physical track (non-standard disks)
-  // FDC::verify() without input arguments verifies whole track
+  // FDC::verify() without input arguments verifies whole track; starting with sector (default 1)
   
-  if (!m_params || (sector > m_params->SectorsPerTrack))
+  if (!m_params)
   {
     return 0;
   }
     
   m_currentSector = sector;
   
+  BYTE endSector = sector;
+  if (wholeTrack)
+  {
+    endSector = m_params->SectorsPerTrack;
+    if (sector == 0)
+    {
+      endSector--;
+    }
+    else if (sector > 1)
+    {
+      endSector += sector-1;
+    }
+  }  
+  
   if (!m_initialized || m_lastError)
   {
     recalibrateDrive();
-    seekDrive(m_currentTrack, m_currentHead);
+    seekDrive(m_currentCylinder, m_currentHead);
   }
   
   m_idle = false;
@@ -876,7 +915,7 @@ WORD FDC::verify(BYTE sector, bool wholeTrack, BYTE* overrideTrack, BYTE* overri
     if (retries)
     {      
       recalibrateDrive();
-      seekDrive(m_currentTrack, m_currentHead);
+      seekDrive(m_currentCylinder, m_currentHead);
       m_idle = false;
     }
     
@@ -887,12 +926,12 @@ WORD FDC::verify(BYTE sector, bool wholeTrack, BYTE* overrideTrack, BYTE* overri
     // set longitudinal or perpendicular mode
     setRecordingMode();
     
-    // supplied track or head number differs from the physical we're currently at?
-    BYTE currentTrack = m_currentTrack;
+    // supplied cylinder or head number differs from the physical we're currently at?
+    BYTE currentCylinder = m_currentCylinder;
     BYTE currentHead = m_currentHead;
-    if (overrideTrack)
+    if (overrideCyl)
     {
-      currentTrack = *overrideTrack;
+      currentCylinder = *overrideCyl;
     }
     if (overrideHead)
     {
@@ -902,11 +941,11 @@ WORD FDC::verify(BYTE sector, bool wholeTrack, BYTE* overrideTrack, BYTE* overri
     // 0x46 Read data
     sendCommand(0x46);
     sendData((m_currentHead << 2) | m_params->DriveNumber); // physical head and drive
-    sendData(currentTrack); // logical track
+    sendData(currentCylinder); // logical cylinder
     sendData(currentHead); // logical head
     sendData(sector); // starting sector
     sendData(convertSectorSize(m_params->SectorSizeBytes));  // sector size 0 to 6, 128B to 8192B
-    sendData(wholeTrack ? m_params->SectorsPerTrack : sector); // ending sector
+    sendData(endSector); // ending sector
     sendData(m_params->GapLength); // gap length
     sendData((m_params->SectorSizeBytes == 128) ? 0x80 : 0xFF); // data transfer length
     
@@ -930,7 +969,7 @@ WORD FDC::verify(BYTE sector, bool wholeTrack, BYTE* overrideTrack, BYTE* overri
     m_currentSector = getData();
     getData();
     
-    if (processIOResult(st0, st1, st2, wholeTrack ? m_params->SectorsPerTrack : sector))
+    if (processIOResult(st0, st1, st2, endSector))
     {
       return dataPos;
     }
@@ -1089,7 +1128,7 @@ bool FDC::processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo)
     {
       snprintf(ui->getPrintBuffer(), MAX_CHARS, 
                Progmem::getString(Progmem::errChsFmtSTRegsSingle),
-               m_currentTrack, m_currentHead, m_currentSector, st0, st1, st2);               
+               m_currentCylinder, m_currentHead, m_currentSector, st0, st1, st2);               
     }
     
     // CHS multi sector
@@ -1097,7 +1136,7 @@ bool FDC::processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo)
     {
       snprintf(ui->getPrintBuffer(), MAX_CHARS, 
                Progmem::getString(Progmem::errChsFmtSTRegsMulti),
-               m_currentTrack, m_currentHead, m_currentSector, endSectorNo, st0, st1, st2); 
+               m_currentCylinder, m_currentHead, m_currentSector, endSectorNo, st0, st1, st2); 
     }
     
     // append newline
@@ -1112,7 +1151,7 @@ bool FDC::processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo)
     {
       snprintf(ui->getPrintBuffer(), MAX_CHARS, 
                Progmem::getString(Progmem::errChsFmtSingleSector),
-               m_currentTrack, m_currentHead, m_currentSector);
+               m_currentCylinder, m_currentHead, m_currentSector);
     }
     
     // CHS multi sector
@@ -1120,7 +1159,7 @@ bool FDC::processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo)
     {
       snprintf(ui->getPrintBuffer(), MAX_CHARS, 
                Progmem::getString(Progmem::errChsFmtMultiSector),
-               m_currentTrack, m_currentHead, m_currentSector, endSectorNo);
+               m_currentCylinder, m_currentHead, m_currentSector, endSectorNo);
     }
     
     // append the rest of the error message and an extra newline
@@ -1183,7 +1222,7 @@ void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
   intType = 0;
 
   m_params = newParams;
-  m_currentTrack = 0;
+  m_currentCylinder = 0;
   m_currentHead = 0;
   m_currentSector = 1;  
 
@@ -1204,19 +1243,19 @@ void FDC::setActiveDrive(DiskDriveMediaParams* newParams)
   }  
 }
 
-bool FDC::seekTest(BYTE toTrack, BYTE step)
+bool FDC::seekTest(BYTE toCylinder, BYTE step)
 { 
-  // seek "toTrack" in one go, then down to 0 in decrements of "step"
-  // make sure we're recalibrated and on track 0
+  // seek "toCylinder" in one go, then down to 0 in decrements of "step"
+  // make sure we're recalibrated and on cyl 0
   setInterrupt();
   resetController();
   recalibrateDrive();
 
-  int trackToSeek = toTrack;
+  int cylToSeek = toCylinder;
   BYTE onTrackZero = 0;
-  while (trackToSeek >= 0)
+  while (cylToSeek >= 0)
   {
-    seekDrive(trackToSeek, 0);
+    seekDrive(cylToSeek, 0);
     
     // call 0x4 Sense drive status to inspect TRK00 signal each try
     // make sure the drive is selected and motor on, beforehand
@@ -1228,18 +1267,18 @@ bool FDC::seekTest(BYTE toTrack, BYTE step)
     onTrackZero = getData() & 0x10;
         
     // inspect TRK00 signal
-    if (((trackToSeek == 0) && !onTrackZero) ||
-        ((trackToSeek > 0) && onTrackZero))
+    if (((cylToSeek == 0) && !onTrackZero) ||
+        ((cylToSeek > 0) && onTrackZero))
     {
       m_idle = true;  
       return false;
     }
     
-    trackToSeek -= step;
+    cylToSeek -= step;
   }
   
   m_idle = true;
-  return (m_currentTrack == 0) && onTrackZero;
+  return (m_currentCylinder == 0) && onTrackZero;
 }
 
 // determine if disk has been changed in the drive
@@ -1266,21 +1305,22 @@ bool FDC::isDiskChanged()
   diskChanged = readRegister(DRR) & 0x80;
   
   // cancel out the flag inside DRR by seeking back and forth; this flag is readonly
-  seekDrive(++m_currentTrack, m_currentHead);
-  seekDrive(--m_currentTrack, m_currentHead);  
+  seekDrive(++m_currentCylinder, m_currentHead);
+  seekDrive(--m_currentCylinder, m_currentHead);  
     
   return diskChanged;
 }
 
 // compute CHS values from supplied logical address
-void FDC::convertLogicalSectorToCHS(WORD logicalSector, BYTE& track, BYTE& head, BYTE& sector)
+// first sector (address 0) always assumed 0/0/1
+void FDC::convertLogicalSectorToCHS(WORD logicalSector, BYTE& cyl, BYTE& head, BYTE& sector)
 {
   if (!m_params)
   {
     return;
   }
   
-  track = (logicalSector / m_params->SectorsPerTrack) / m_params->Heads;
+  cyl = (logicalSector / m_params->SectorsPerTrack) / m_params->Heads;
   head = (logicalSector / m_params->SectorsPerTrack) % m_params->Heads;
   sector = (logicalSector % m_params->SectorsPerTrack) + 1;
 }
@@ -1293,25 +1333,39 @@ WORD FDC::getTotalSectorCount()
     return 0;
   }
     
-  return m_params->Tracks * m_params->SectorsPerTrack * m_params->Heads;
+  return m_params->Cylinders * m_params->SectorsPerTrack * m_params->Heads;
 }
 
 // get the maximum sector count for a read/write operation
 // depending on sector buffer size or bytes of operation on same track left
 BYTE FDC::getMaximumSectorCountForRW(BYTE startSector, WORD operationBytes)
 {
-  if (!m_params || !startSector || (startSector > m_params->SectorsPerTrack))
+  if (!m_params)
   {
     return 0;
   }
   
   const WORD maxBytes = operationBytes ? operationBytes : SECTOR_BUFFER_SIZE;  
-  BYTE endSector = startSector - 1;
+  WORD endSector = startSector - 1;
+  if (startSector == 0)
+  {
+    endSector = 0;
+  }
   endSector += maxBytes / m_params->SectorSizeBytes;
   
-  if (endSector > m_params->SectorsPerTrack)
+  WORD endSectorLimit = m_params->SectorsPerTrack;
+  if (startSector == 0)
   {
-    endSector = m_params->SectorsPerTrack;
+    endSectorLimit--;
+  }
+  else if (startSector > 1)
+  {
+    endSectorLimit += startSector-1;
+  }
+  
+  if (endSector > endSectorLimit)
+  {
+    endSector = endSectorLimit;
   }
   
   return endSector - startSector + 1;
@@ -1383,7 +1437,7 @@ void FDC::setRecordingMode()
   sendData(data);
 }
 
-bool FDC::readSectorID(BYTE* track, BYTE* head, BYTE* sector, BYTE* sectorSizeN)
+bool FDC::readSectorID(BYTE* cyl, BYTE* head, BYTE* sector, BYTE* sectorSizeN)
 {
   // read the ID of whatever sector that is currently passing through the R/W head using the current comm rate
   // on success, return its parameters
@@ -1397,7 +1451,7 @@ bool FDC::readSectorID(BYTE* track, BYTE* head, BYTE* sector, BYTE* sectorSizeN)
   if (!m_initialized || m_lastError)
   {
     recalibrateDrive();
-    seekDrive(m_currentTrack, m_currentHead);
+    seekDrive(m_currentCylinder, m_currentHead);
   }
        
   m_noDiskInDrive = false;
@@ -1425,7 +1479,7 @@ bool FDC::readSectorID(BYTE* track, BYTE* head, BYTE* sector, BYTE* sectorSizeN)
     const BYTE st1 = getData();
     getData();
     
-    const BYTE _track = getData();
+    const BYTE _cyl   = getData();
     const BYTE _head  = getData();
     m_currentSector   = getData();
     const BYTE _ssize = getData();
@@ -1433,9 +1487,9 @@ bool FDC::readSectorID(BYTE* track, BYTE* head, BYTE* sector, BYTE* sectorSizeN)
     // on success, return values if pointers were provided
     if (!(st0 & 0xC0) || (st1 & 0x80))
     {
-      if (track)
+      if (cyl)
       {
-        *track = _track;
+        *cyl = _cyl;
       }    
       if (head)
       {

@@ -48,11 +48,11 @@ void InitializeDrives()
   
   while(true)
   {
-    ui->print(Progmem::getString(Progmem::imdDriveTracks));
-    WORD tracks = (WORD)atoi(ui->prompt(3, Progmem::getString(Progmem::uiDecimalInput)));
-    if ((tracks > 0) && (tracks <= 100))
+    ui->print(Progmem::getString(Progmem::imdDriveCyls));
+    WORD cylinders = (WORD)atoi(ui->prompt(3, Progmem::getString(Progmem::uiDecimalInput)));
+    if ((cylinders > 0) && (cylinders <= 100))
     {
-      imd.getParams().Tracks = (BYTE)tracks;
+      imd.getParams().Cylinders = (BYTE)cylinders;
       ui->print(Progmem::getString(Progmem::uiNewLine));
       break;
     }
@@ -210,8 +210,9 @@ IMD::IMD()
   m_xlat300and250 = false;
   m_lastGoodCommRate = 0;
   
-  // format interleave sequential by default
+  // format interleave sequential by default, start sector at 1
   m_formatInterleave = 1;
+  m_formatStartSector = 1;
   
   // IMD file transfer
   m_cbSuccess = false;
@@ -230,7 +231,7 @@ IMD::IMD()
 
 bool IMD::autodetectCommRate()
 { 
-  // autodetect what FDC communication rate to use, from the current physical track/head
+  // autodetect what FDC communication rate to use, from the current physical cyl/head
   // on success, also initializes fdc->SectorSizeBytes
   const WORD commRates[] = {500, 250, 300};
   const bool useFM[] = {false, true};
@@ -279,7 +280,7 @@ bool IMD::autodetectDoubleStep()
   // comm rate must be already set or detected (disk must be in)
   // do detection on the current side (head)
   // returns true and sets DoubleStepping accordingly or false if couldn't detect
-  const BYTE saveTrack = fdc->getCurrentTrack();
+  const BYTE saveCylinder = fdc->getCurrentCylinder();
   const BYTE saveHead = fdc->getCurrentHead();
   
   // go to track 0 and assume single step first    
@@ -288,60 +289,60 @@ bool IMD::autodetectDoubleStep()
   fdc->seekDrive(0, saveHead);
   
   // find sector 1 on track 0 within some 2.5 sec.
-  BYTE currTrack = (BYTE)-1;
+  BYTE currCylinder = (BYTE)-1;
   BYTE currSector = (BYTE)-1;
   DWORD timeStart = millis();
   while ((currSector != 1) && ((millis() - timeStart) < 2500))
   {
-    if (!fdc->readSectorID(&currTrack, NULL, &currSector))
+    if (!fdc->readSectorID(&currCylinder, NULL, &currSector))
     {
       if (fdc->wasErrorNoDiskInDrive())
       {
-        fdc->seekDrive(saveTrack, saveHead);
+        fdc->seekDrive(saveCylinder, saveHead);
         return false;
       }
     }
   }
-  if ((currSector != 1) || (currTrack != 0))
+  if ((currSector != 1) || (currCylinder != 0))
   {
-    fdc->seekDrive(saveTrack, saveHead);
+    fdc->seekDrive(saveCylinder, saveHead);
     return false;
   }
   
-  // now advance to track 2 and do the same
+  // now advance to cylinder 2 and do the same
   fdc->seekDrive(2, saveHead);
   currSector = (BYTE)-1;
-  currTrack = (BYTE)-1;
+  currCylinder = (BYTE)-1;
   timeStart = millis();
   while ((currSector != 1) && ((millis() - timeStart) < 2500))
   {
-    if (!fdc->readSectorID(&currTrack, NULL, &currSector))
+    if (!fdc->readSectorID(&currCylinder, NULL, &currSector))
     {
       if (fdc->wasErrorNoDiskInDrive())
       {
-        fdc->seekDrive(saveTrack, saveHead);
+        fdc->seekDrive(saveCylinder, saveHead);
         return false;
       }
     }
   }
   
-  if ((currSector == 1) && (currTrack == 2))
+  if ((currSector == 1) && (currCylinder == 2))
   {
     // auto-detected single stepping
-    fdc->seekDrive(saveTrack, saveHead);
+    fdc->seekDrive(saveCylinder, saveHead);
     return true;
   }
-  else if ((currSector == 1) && (currTrack == 1))
+  else if ((currSector == 1) && (currCylinder == 1))
   {
     // auto-detected double stepping
     fdc->getParams()->DoubleStepping = true;
     fdc->recalibrateDrive();
-    fdc->seekDrive(saveTrack, saveHead);
+    fdc->seekDrive(saveCylinder, saveHead);
     return true;
   }
   
   fdc->recalibrateDrive();
-  fdc->seekDrive(saveTrack, saveHead);
+  fdc->seekDrive(saveCylinder, saveHead);
   return false; // we tried, didn't we
 }
 
@@ -349,11 +350,11 @@ bool IMD::autodetectHeads()
 {
   // analog to the one above, except that the sector number is ignored
   // side 0 shall be commrate detected
-  const BYTE saveTrack = fdc->getCurrentTrack();
+  const BYTE saveCylinder = fdc->getCurrentCylinder();
   const BYTE saveHead = fdc->getCurrentHead();
   
-  // find any sector on current track of side 0
-  fdc->seekDrive(saveTrack, 0);
+  // find any sector on current cyl of side 0
+  fdc->seekDrive(saveCylinder, 0);
   BYTE currHead = (BYTE)-1;
   DWORD timeStart = millis();
   while ((millis() - timeStart) < 2500)
@@ -362,7 +363,7 @@ bool IMD::autodetectHeads()
     {
       if (fdc->wasErrorNoDiskInDrive())
       {
-        fdc->seekDrive(saveTrack, saveHead);
+        fdc->seekDrive(saveCylinder, saveHead);
         return false;
       }
     }
@@ -374,12 +375,12 @@ bool IMD::autodetectHeads()
   // rather don't autodetect if this one ain't right
   if (currHead != 0)
   {
-    fdc->seekDrive(saveTrack, saveHead);
+    fdc->seekDrive(saveCylinder, saveHead);
     return false;
   }
   
   // now check if currHead on side 1 is also 1, then the disk contains a double sided recording
-  fdc->seekDrive(saveTrack, 1);
+  fdc->seekDrive(saveCylinder, 1);
   currHead = (BYTE)-1;
 
   // different data rate on second side?
@@ -393,7 +394,7 @@ bool IMD::autodetectHeads()
       {
         if (fdc->wasErrorNoDiskInDrive())
         {
-          fdc->seekDrive(saveTrack, saveHead);
+          fdc->seekDrive(saveCylinder, saveHead);
           return false;
         }
       }
@@ -418,7 +419,7 @@ bool IMD::autodetectHeads()
     fdc->getParams()->Heads = 1;
   }
   
-  fdc->seekDrive(saveTrack, saveHead);
+  fdc->seekDrive(saveCylinder, saveHead);
   return true;  
 }
 
@@ -433,32 +434,37 @@ WORD* IMD::autodetectSectorsPerTrack(BYTE& observedSPT, BYTE& maximumSPT)
   {
     return NULL;
   }
-  memset(sectorsTable, 0, SECTORS_TABLE_COUNT*sizeof(WORD));
+  memset(sectorsTable, 0xFF, SECTORS_TABLE_COUNT*sizeof(WORD));
   
   // create an array of sectors sequence
-  // sectors are 1-based, so 0s are empty (invalid) entries that didn't make it in disk rotations
+  // empty/invalid entries: 0xFFFF ("127 cyl, head 1, sector 255")
   BYTE idx = 0;
-  BYTE computeSPT = 0;  
+  BYTE computeSPT = 0;
+  bool compute = false;
+  bool sectorZeroObserved = false;
   DWORD timeStart = millis();
   
   // 5sec should give at least 25 complete disk revolutions @ 300RPM
   while ((millis() - timeStart) < 5000)
   {
-    BYTE track = 0;
+    BYTE cyl = 0;
     BYTE head = 0;        
     BYTE sector = 0;
-    if (fdc->readSectorID(&track, &head, &sector) && sector)
+    if (fdc->readSectorID(&cyl, &head, &sector))
     {
+      sectorZeroObserved |= !sector;
+      
       if (idx == 0)
       {
         // count number of times until we see the same sector again: that's the observed SPT
-        computeSPT = sector;      
+        computeSPT = sector;
+        compute = true;
       }
       else if (computeSPT == sector)
       {
-        computeSPT = 0; // stop counting
+        compute = false; // stop counting
       }
-      if (computeSPT)
+      if (compute)
       {
         observedSPT++;
       }
@@ -469,8 +475,10 @@ WORD* IMD::autodetectSectorsPerTrack(BYTE& observedSPT, BYTE& maximumSPT)
         maximumSPT = sector;
       }
       
-      // each item is 16-bit, upper 8 bits: logical cylinder number, lower 8 bits: log. head (bit 7) and sector (bits 6-0)
-      sectorsTable[idx++] = ((WORD)track << 8) | (head << 7) | (sector & 0x7F);
+      // each item is 16-bit
+      // upper 8 bits: bit7: head number, bits6-0: logical cylinder number
+      // lower 8 bits: logical sector number
+      sectorsTable[idx++] = (((WORD)head & 1) << 15) | (((WORD)cyl & 0x7F) << 8) | sector;
       if (idx == SECTORS_TABLE_COUNT)
       {
         break;
@@ -484,6 +492,12 @@ WORD* IMD::autodetectSectorsPerTrack(BYTE& observedSPT, BYTE& maximumSPT)
         return NULL;
       }
     }
+  }
+  
+  // account for logical sector number 0
+  if (sectorZeroObserved)
+  {
+    maximumSPT++;
   }
   
   // failsafe
@@ -539,7 +553,7 @@ bool IMD::autodetectInterleave()
     }
     
     fdc->recalibrateDrive();
-    fdc->seekDrive(fdc->getCurrentTrack(), fdc->getCurrentHead());
+    fdc->seekDrive(fdc->getCurrentCylinder(), fdc->getCurrentHead());
   } 
   
   // determine which attempt at scanning yielded the most observed SPT and use that
@@ -578,22 +592,25 @@ bool IMD::autodetectInterleave()
   idx = 0;
   while (idx < SECTORS_TABLE_COUNT-1)
   {
-    thisSector = ((BYTE)m_cbSectorsTable[idx]) & 0x7F;
-    nextSector = ((BYTE)m_cbSectorsTable[idx+1]) & 0x7F;
-    // zero in table?
-    if (!thisSector || !nextSector)
+    thisSector = (BYTE)m_cbSectorsTable[idx];
+    nextSector = (BYTE)m_cbSectorsTable[idx+1];    
+    if (m_cbSectorsTable[idx] == 0xFFFF) // undefined
     {
-      idx++;
-    }    
-    // neither of these is the last sector
-    else if ((thisSector != sectorsPerTrack) && (nextSector != sectorsPerTrack))
+      idx += 2;
+      continue;
+    }
+    
+    // neither of these is the last sector (or penultimate; account for sector 0)
+    if ((thisSector < sectorsPerTrack-1) && (nextSector < sectorsPerTrack-1))
     {
       break;
     }
+    
+    // choose a different combination
     idx++;
   }
   
-  if (thisSector && nextSector && (idx < SECTORS_TABLE_COUNT-1))
+  if (idx < SECTORS_TABLE_COUNT-1)
   {
     if ((nextSector - thisSector) == 1)
     {
@@ -608,7 +625,7 @@ bool IMD::autodetectInterleave()
     BYTE interleave = 0;
     while (idx2 < SECTORS_TABLE_COUNT)
     {
-      if (((BYTE)m_cbSectorsTable[idx2++] & 0x7F) != thisSector+1)
+      if ((BYTE)m_cbSectorsTable[idx2++] != thisSector+1)
       {
         interleave++;
       }
@@ -617,8 +634,10 @@ bool IMD::autodetectInterleave()
         break;
       }
     }
+    
     // double-check if nextSector is advanced by the same factor
-    if (((BYTE)m_cbSectorsTable[idx+1+interleave] & 0x7F) == nextSector+1)
+    if (((BYTE)m_cbSectorsTable[idx+1+interleave] == nextSector+1) &&
+        (interleave <= sectorsPerTrack))
     {
       fdc->getParams()->SectorsPerTrack = sectorsPerTrack;
       m_cbInterleave = interleave;
@@ -771,10 +790,10 @@ void IMD::testDrive()
     ui->print("");
   }
   
-  // seek fast to the last (specified) track and slowly back to 0, inspecting /TRK00 signal each step
-  // number of steps back until the signal asserts must be equal to Tracks-1    
+  // seek fast to the last (specified) cylinder and slowly back to 0, inspecting /TRK00 signal each step
+  // number of steps back until the signal asserts must be equal to Cylinders-1    
   ui->print(Progmem::getString(Progmem::imdTestDriveSeek));
-  if (fdc->seekTest(fdc->getParams()->Tracks-1, 1))
+  if (fdc->seekTest(fdc->getParams()->Cylinders-1, 1))
   {
     ui->print(" ");
     ui->print(Progmem::getString(Progmem::uiOK));
@@ -1058,21 +1077,21 @@ void IMD::testController()
   fdc->resetController();
 }
 
-void IMD::printGeometryInfo(BYTE track, BYTE head, BYTE interleave)
+void IMD::printGeometryInfo(BYTE cyl, BYTE head, BYTE interleave)
 {
   ui->print(""); 
   
-  // single/doublestep, max. tracks and sides
+  // single/doublestep, max. cylinders and sides
   ui->print(Progmem::getString(fdc->getParams()->DoubleStepping ? Progmem::imdDoubleStepping : Progmem::imdSingleStepping));
-  ui->print(Progmem::getString(Progmem::imdGeoCylsHdStep), fdc->getParams()->Tracks, fdc->getParams()->Heads);
+  ui->print(Progmem::getString(Progmem::imdGeoCylsHdStep), fdc->getParams()->Cylinders, fdc->getParams()->Heads);
   if (fdc->getParams()->Heads > 1)
   {
     ui->print("s");
   }
   ui->print(Progmem::getString(Progmem::uiNewLine));
   
-  // sectors per track on current side and track, sector gap length
-  ui->print(Progmem::getString(Progmem::imdGeoChsSpt), track, head, fdc->getParams()->SectorsPerTrack,
+  // sectors per track on current side and cylinder, sector gap length
+  ui->print(Progmem::getString(Progmem::imdGeoChsSpt), cyl, head, fdc->getParams()->SectorsPerTrack,
             fdc->getParams()->SectorSizeBytes, fdc->getParams()->GapLength);
   
   // media data rate, encoding, format gap length
@@ -1127,11 +1146,11 @@ void IMD::eraseDisk()
   printGeometryInfo(0, 0, 1);
   
   BYTE head = 0;
-  BYTE track = 0;  
-  while(track < fdc->getParams()->Tracks)
+  BYTE cyl = 0;  
+  while(cyl < fdc->getParams()->Cylinders)
   {
-    ui->print(Progmem::getString(Progmem::imdProgress), track, head);
-    fdc->seekDrive(track, head);    
+    ui->print(Progmem::getString(Progmem::imdProgress), cyl, head);
+    fdc->seekDrive(cyl, head);    
     fdc->formatTrack();
     
     const bool formatBreakError = fdc->getLastError() ? fdc->wasErrorNoDiskInDrive() || fdc->wasErrorDiskProtected() : false;
@@ -1148,7 +1167,7 @@ void IMD::eraseDisk()
     }
     
     head = 0;
-    track++;
+    cyl++;
   }
   
   ui->print(Progmem::getString(fdc->wasErrorNoDiskInDrive() ? Progmem::uiNewLine2x : Progmem::uiNewLine));
@@ -1342,6 +1361,26 @@ void IMD::formatDisk()
     
     ui->print(Progmem::getString(Progmem::uiDeleteLine));
   }
+  
+  // starting sector
+  ui->print(Progmem::getString(Progmem::imdFormatStartSec1));
+  while(true)
+  {
+    ui->print(Progmem::getString(Progmem::imdFormatStartSec2), 256-spt);
+    const BYTE* prompt = ui->prompt(3, Progmem::getString(Progmem::uiDecimalInput));    
+    if (strlen(prompt))
+    {
+      WORD startSector = (WORD)atoi(prompt);
+      if (startSector <= 256-spt)
+      {
+        m_formatStartSector = startSector;
+        ui->print(Progmem::getString(Progmem::uiNewLine));
+        break;
+      }
+    }    
+    
+    ui->print(Progmem::getString(Progmem::uiDeleteLine));
+  }
     
   // all questions answered
   previousFormatParams = m_params;  
@@ -1364,18 +1403,28 @@ beginFormat:
   fdc->setCommunicationRate();  
   printGeometryInfo(0, 0, m_formatInterleave);
   
+  WORD sector = m_formatStartSector;
+  WORD endSector = fdc->getParams()->SectorsPerTrack;
+  if (sector == 0)
+  {
+    endSector--;
+  }
+  else if (sector > 1)
+  {
+    endSector += sector-1;
+  }
+  
   BYTE head = 0;
-  BYTE track = 0;
-  BYTE sector = 1;
+  BYTE cyl = 0;
   WORD badSectorCount = 0;
   bool breakError = false;
   
-  while(track < fdc->getParams()->Tracks)
+  while(cyl < fdc->getParams()->Cylinders)
   {
-    ui->print(Progmem::getString(Progmem::imdProgress), track, head);      
+    ui->print(Progmem::getString(Progmem::imdProgress), cyl, head);      
     
-    fdc->seekDrive(track, head);    
-    fdc->formatTrack(false, m_formatInterleave);
+    fdc->seekDrive(cyl, head);    
+    fdc->formatTrack(false, m_formatInterleave, m_formatStartSector);
 
     bool formatError = fdc->getLastError();
     breakError = formatError ? fdc->wasErrorNoDiskInDrive() || fdc->wasErrorDiskProtected() : false;    
@@ -1392,7 +1441,7 @@ beginFormat:
     // format OK, now verify
     else
     {
-      while (sector <= fdc->getParams()->SectorsPerTrack)
+      while (sector <= endSector)
       {
         const WORD successfulBytesRead = fdc->verify(sector, false);                
         
@@ -1410,7 +1459,7 @@ beginFormat:
         sector++;
       }
     }
-    sector = 1;
+    sector = m_formatStartSector;
     
     // break while verify?
     if (breakError)
@@ -1425,7 +1474,7 @@ beginFormat:
     }
     
     head = 0;
-    track++;
+    cyl++;
   }
   
   ui->print(Progmem::getString(fdc->wasErrorNoDiskInDrive() ? Progmem::uiNewLine2x : Progmem::uiNewLine));
@@ -1478,7 +1527,7 @@ void IMD::cleanupCallback()
   // all of these flags before the actual sector data follow
   // to know where we left off when the last data packet ended, and the callback returned
   m_cbModeSpecified        = false;
-  m_cbTrackSpecified       = false;
+  m_cbCylinderSpecified    = false;
   m_cbHeadSpecified        = false;
   m_cbSptSpecified         = false;
   m_cbSecSizeSpecified     = false;
@@ -1490,7 +1539,7 @@ void IMD::cleanupCallback()
   
   // even zeros are valid so we need to know what was specified and what not yet
   m_cbMode                 = (BYTE)-1;
-  m_cbTrack                = (BYTE)-1;
+  m_cbCylinder             = (BYTE)-1;
   m_cbHead                 = (BYTE)-1;
   m_cbSpt                  = (BYTE)-1;
   m_cbSecSize              = (BYTE)-1;
@@ -1501,6 +1550,7 @@ void IMD::cleanupCallback()
   
   m_cbSecSizeBytes         = 0;         // 128 << secSize
   m_cbInterleave           = 1;         // computed from the .IMD sectors map or read from disk via autodetectInterleave
+  m_cbCurrentSector        = 0;         // last valid logical sector number read from m_cbSectorsTable
   m_cbGeometryChanged      = true;      // if mode, spt, secSize or interleave changed
   m_cbSeekIndicated        = true;      // indicate seek
   m_cbLastPos              = 0;         // position in buffer and maps
@@ -1703,20 +1753,20 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       CHECK_STREAM_END;
     }
     
-    if (!m_cbTrackSpecified)
+    if (!m_cbCylinderSpecified)
     {
-      m_cbTrack = data[packetIdx];
+      m_cbCylinder = data[packetIdx];
       
-      // more tracks than configured?
-      if (m_cbTrack >= fdc->getParams()->Tracks)
+      // more cylinders than configured?
+      if (m_cbCylinder >= fdc->getParams()->Cylinders)
       {
         m_cbSuccess = false;
-        snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdXmodemErrTrack));
+        snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdXmodemErrCyls));
         return false;
       }
       
       packetIdx++;
-      m_cbTrackSpecified = true;
+      m_cbCylinderSpecified = true;
       CHECK_STREAM_END;
     }
     
@@ -1796,7 +1846,7 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
     if (!m_cbSpt)
     {
       m_cbModeSpecified = false;
-      m_cbTrackSpecified = false;
+      m_cbCylinderSpecified = false;
       m_cbHeadSpecified = false;
       m_cbSptSpecified = false;
       m_cbSecSizeSpecified = false;
@@ -1834,8 +1884,9 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       BYTE newInterleave = 1; // assume sequential
       if (m_cbSpt > 2)
       {
-        // find starting sector; might not start from one
-        BYTE startingSector = 1;
+        // find starting sector
+        bool found = false;
+        WORD startingSector = 0;
         BYTE idx = 0;
         
         for (;;)
@@ -1844,41 +1895,48 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
           {
             if (m_cbSectorNumberingMap[idx] == startingSector)
             {
+              found = true;
               break;
             }
           }
           
-          if (m_cbSectorNumberingMap[idx] != startingSector)
-          {
-            startingSector++;
-            if (startingSector > m_cbSpt)
-            {
-              startingSector = 1;
-              idx = 0;
-              break; // we tried
-            }  
-          }
-          else
-          {
-            break; // found
-          }
-        }
-        
-        // find interleave factor
-        m_cbLastPos = idx + 1;        
-        while (m_cbLastPos < m_cbSpt)
-        {
-          if (m_cbSectorNumberingMap[m_cbLastPos++] != startingSector+1)
-          {
-            newInterleave++;
-          }
-          else
+          if (found)
           {
             break;
           }
+          
+          startingSector++;
+          if (startingSector > 255)
+          {
+            startingSector = 1;
+            idx = 0;
+            break; // we tried
+          }
         }
         
-        m_cbLastPos = 0;
+        if (!found)
+        {
+          newInterleave = 1;
+        }
+        
+        // find interleave factor
+        else
+        {
+          m_cbLastPos = idx + 1;        
+          while (m_cbLastPos < m_cbSpt)
+          {
+            if (m_cbSectorNumberingMap[m_cbLastPos++] != startingSector+1)
+            {
+              newInterleave++;
+            }
+            else
+            {
+              break;
+            }
+          }
+          
+          m_cbLastPos = 0;
+        }
       }
       if (newInterleave != m_cbInterleave)
       {
@@ -1942,10 +2000,10 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
     // check if single-sided operation was setup but the current image head number is indicating 2nd head
     bool skipOperation = ((fdc->getParams()->Heads == 1) && (m_cbHead > 0));
     
-    // seek to physical track and head
-    if (!skipOperation && ((fdc->getCurrentTrack() != m_cbTrack) || (fdc->getCurrentHead() != m_cbHead)))
+    // seek to physical cylinder and head
+    if (!skipOperation && ((fdc->getCurrentCylinder() != m_cbCylinder) || (fdc->getCurrentHead() != m_cbHead)))
     {
-      fdc->seekDrive(m_cbTrack, m_cbHead);
+      fdc->seekDrive(m_cbCylinder, m_cbHead);
       m_cbSeekIndicated = true;
     }
     
@@ -2006,26 +2064,26 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
           fdc->getParams()->Gap3Length = autoFormatGap;
         }
         
-        printGeometryInfo(m_cbTrack, m_cbHead, m_cbInterleave);
+        printGeometryInfo(m_cbCylinder, m_cbHead, m_cbInterleave);
       }
     }
     
     if (!skipOperation && m_cbSeekIndicated)
     { 
       // print progress on LCD
-      ui->print(Progmem::getString(Progmem::imdProgress), m_cbTrack, m_cbHead);
+      ui->print(Progmem::getString(Progmem::imdProgress), m_cbCylinder, m_cbHead);
       
-      // prepare CHSV table for formatting, we might have custom values for the track and head
+      // prepare CHSV table for formatting, we might have custom values for the cylinder and head
       memset(&g_rwBuffer[0], 0, m_cbSpt * 4);
       BYTE sectorIdx = 0;
       m_cbLastPos = 0;
       while (sectorIdx < m_cbSpt)
       {
         const BYTE logicalSector = m_cbSectorNumberingMap[sectorIdx];
-        const BYTE logicalTrack = m_cbHasSecTrackMap ? m_cbSectorTrackMap[sectorIdx] : m_cbTrack;
+        const BYTE logicalCylinder = m_cbHasSecTrackMap ? m_cbSectorTrackMap[sectorIdx] : m_cbCylinder;
         const BYTE logicalHead = m_cbHasSecHeadMap ? m_cbSectorHeadMap[sectorIdx] : m_cbHead;
         
-        g_rwBuffer[m_cbLastPos++] = logicalTrack;
+        g_rwBuffer[m_cbLastPos++] = logicalCylinder;
         g_rwBuffer[m_cbLastPos++] = logicalHead;
         g_rwBuffer[m_cbLastPos++] = logicalSector;
         g_rwBuffer[m_cbLastPos++] = m_cbSecSize;
@@ -2125,14 +2183,14 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
     {
       const BYTE logicalSector = m_cbSectorNumberingMap[m_cbSectorIdx];
       // these 2 may differ from the physical position that was used for fdc->seekDrive() !
-      const BYTE logicalTrack = m_cbHasSecTrackMap ? m_cbSectorTrackMap[m_cbSectorIdx] : m_cbTrack;
+      const BYTE logicalCylinder = m_cbHasSecTrackMap ? m_cbSectorTrackMap[m_cbSectorIdx] : m_cbCylinder;
       const BYTE logicalHead = m_cbHasSecHeadMap ? m_cbSectorHeadMap[m_cbSectorIdx] : m_cbHead;    
       
       // normal data with DAM, compressed data with DAM, deleted data with read error, compressed deleted with read error
       const bool deletedDataMark = (m_cbSectorDataType == 3) || (m_cbSectorDataType == 4) || (m_cbSectorDataType == 7) || (m_cbSectorDataType == 8);
       
       // finally, write
-      bool result = fdc->readWriteSectors(true, logicalSector, logicalSector, NULL, deletedDataMark, &logicalTrack, &logicalHead);
+      bool result = fdc->readWriteSectors(true, logicalSector, logicalSector, NULL, deletedDataMark, &logicalCylinder, &logicalHead);
       
       // 2 errors that stop the datastream
       if (fdc->getLastError())
@@ -2160,7 +2218,7 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       // write OK, now verify
       else if (m_cbDoVerify)
       {
-        result = fdc->verify(logicalSector, false, &logicalTrack, &logicalHead);
+        result = fdc->verify(logicalSector, false, &logicalCylinder, &logicalHead);
         
         if (fdc->getLastError())
         {
@@ -2188,7 +2246,7 @@ bool IMD::writeDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       m_cbLastPos = 0;
       
       m_cbModeSpecified = false;
-      m_cbTrackSpecified = false;
+      m_cbCylinderSpecified = false;
       m_cbHeadSpecified = false;
       m_cbSptSpecified = false;
       m_cbSecSizeSpecified = false;
@@ -2406,7 +2464,7 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
   memset(data, 0x1A, size);
   
   // end of transfer
-  if (m_cbTrack == fdc->getParams()->Tracks)
+  if (m_cbCylinder == fdc->getParams()->Cylinders)
   {
     return false;
   }
@@ -2490,12 +2548,12 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       CHECK_STREAM_END;
     }
     
-    if (!m_cbTrackSpecified)
+    if (!m_cbCylinderSpecified)
     {
-      m_cbTrack = fdc->getCurrentTrack();
-      data[packetIdx++] = m_cbTrack;
+      m_cbCylinder = fdc->getCurrentCylinder();
+      data[packetIdx++] = m_cbCylinder;
       
-      m_cbTrackSpecified = true;
+      m_cbCylinderSpecified = true;
       CHECK_STREAM_END;
     }
     
@@ -2555,13 +2613,13 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
           }
           
           // valid sector ID information?
-          if (m_cbSectorsTable[idx])
+          if (m_cbSectorsTable[idx] != 0xFFFF)
           {
             if (!m_cbHasSecTrackMap)
             {
-              // sector ID track number differs from physical?
-              const BYTE track = (BYTE)(m_cbSectorsTable[idx] >> 8);
-              if (track != m_cbTrack)
+              // sector ID cyl number differs from physical?
+              const BYTE cylinder = (m_cbSectorsTable[idx] >> 8) & 0x7F;
+              if (cylinder != m_cbCylinder)
               {
                 m_cbHasSecTrackMap = true;
               }              
@@ -2569,9 +2627,9 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
             if (!m_cbHasSecHeadMap)
             {
               // sector ID head number differs from physical?
-              const BYTE head = ((BYTE)m_cbSectorsTable[idx]) >> 7;
+              const BYTE head = m_cbSectorsTable[idx] >> 15;
               if (head != m_cbHead)
-              {
+              {                
                 m_cbHasSecHeadMap = true;
               }
             } 
@@ -2612,7 +2670,48 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       else
       {
         m_cbSpt = 0;
-      }      
+      }
+      
+      if (m_cbSpt)
+      {
+        // as the interleave table almost always never starts from the beginning, find the starting sector
+        WORD startingSector = 0;
+        
+        while (m_cbStartingSectorIdx == (BYTE)-1) // undefined
+        {
+          bool found = false;
+          for (BYTE idx = 0; idx < SECTORS_TABLE_COUNT; idx++)
+          {
+            if (m_cbSectorsTable[idx] == 0xFFFF) // entry not defined
+            {
+              continue;
+            }
+            
+            if ((BYTE)m_cbSectorsTable[idx] == startingSector)
+            {
+              m_cbStartingSectorIdx = idx;
+              m_cbSectorIdx = m_cbStartingSectorIdx;
+              m_cbLastPos = 0; // use this as count how many were written in the map
+              found = true;
+              break;
+            }
+          }
+          
+          if (found)
+          {
+            break;
+          }
+          
+          startingSector++;  // starts from 2 or whatever
+          if (startingSector > 255) // cannot sync
+          {
+            // mark track as unreadable
+            m_cbSpt = 0;
+            fdc->getParams()->SectorSizeBytes = 0;            
+            break;
+          }
+        }
+      }
           
       data[packetIdx++] = m_cbSpt; 
       m_cbSptSpecified = true;
@@ -2650,13 +2749,13 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
     if (!m_cbSpt || !m_cbSecSizeBytes)
     {
       // progress Unreadable
-      ui->print(Progmem::getString(Progmem::imdProgress), m_cbTrack, m_cbHead);
+      ui->print(Progmem::getString(Progmem::imdProgress), m_cbCylinder, m_cbHead);
       ui->print(Progmem::getString(Progmem::imdTrackUnreadable));
       m_cbUnreadableTracks++;
       
       // re-specify
       m_cbModeSpecified = false;
-      m_cbTrackSpecified = false;
+      m_cbCylinderSpecified = false;
       m_cbHeadSpecified = false;
       m_cbSptSpecified = false;
       m_cbSecSizeSpecified = false;
@@ -2673,65 +2772,72 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       if (m_cbHead == fdc->getParams()->Heads)
       {
         m_cbHead = 0;
-        m_cbTrack++;
+        m_cbCylinder++;
       }
-      if (m_cbTrack == fdc->getParams()->Tracks)
+      if (m_cbCylinder == fdc->getParams()->Cylinders)
       {
         m_cbSuccess = true;
         m_cbResponseStr[0] = 0;
         return true; // flush the buffer
       }
       
-      fdc->seekDrive(m_cbTrack, m_cbHead);      
+      fdc->seekDrive(m_cbCylinder, m_cbHead);      
       continue; // transfer continues
     }
     
     // next in the list is the mandatory sector map
     if (!m_cbSecMapSpecified)
     {
-      // as the interleave table almost always never starts from the beginning, find the starting sector
-      // but even the starting sector number might not start from 1...
-      BYTE startingSector = 1;
-      
-      while (m_cbStartingSectorIdx == (BYTE)-1) // undefined
-      {
-        for (BYTE idx = 0; idx < SECTORS_TABLE_COUNT; idx++)
-        {
-          if (!m_cbSectorsTable[idx]) // entry not defined
-          {
-            continue;
-          }
-          
-          // last 6 bytes (1-63)
-          if ((((BYTE)m_cbSectorsTable[idx]) & 0x3F) == startingSector)
-          {
-            m_cbStartingSectorIdx = idx;
-            m_cbSectorIdx = m_cbStartingSectorIdx;
-            m_cbLastPos = 0; // use this as count how many were written in the map
-            break;
-          }
-        }
-        
-        startingSector++;  // starts from 2 or whatever
-        if (startingSector > SECTORS_TABLE_COUNT) // cannot sync
-        {
-          m_cbSuccess = false;
-          snprintf(m_cbResponseStr, sizeof(m_cbResponseStr), Progmem::getString(Progmem::imdSyncSectorFail));
-          return false;
-        }
-      }
-      
       // now write the sector numbering map
       while ((m_cbLastPos < m_cbSpt) && (m_cbSectorIdx < SECTORS_TABLE_COUNT))
       {
-        data[packetIdx++] = (((BYTE)m_cbSectorsTable[m_cbSectorIdx++]) & 0x3F); // sector info only
+        if (m_cbSectorsTable[m_cbSectorIdx] == 0xFFFF) // undefined?
+        {
+          m_cbSectorIdx++;
+          continue;
+        }
+        
+        m_cbCurrentSector = (BYTE)m_cbSectorsTable[m_cbSectorIdx++]; // sector info only
+        
+        data[packetIdx++] = m_cbCurrentSector;
         m_cbLastPos++;
         CHECK_STREAM_END;
       }
       
-      // we still need to go from the beginning of the table?
+      // sectors per track count not reached: do we still need to go from the beginning of the table?
       if ((m_cbSectorIdx == SECTORS_TABLE_COUNT) && (m_cbLastPos < m_cbSpt))
       {
+        bool found = false;
+            
+        while (m_cbCurrentSector && !found)
+        {
+          for (m_cbSectorIdx = 0; m_cbSectorIdx < SECTORS_TABLE_COUNT; m_cbSectorIdx++)
+          {
+            if (((BYTE)m_cbSectorsTable[m_cbSectorIdx] == m_cbCurrentSector) &&
+                 (m_cbSectorsTable[m_cbSectorIdx] != 0xFFFF))
+            {
+              found = true;
+              break;
+            }
+          }
+          
+          if (!found)
+          {
+            m_cbCurrentSector++; // possible gap?
+          }
+        }            
+        
+        // found from the beginning, get the succeeding sector index
+        if (found)
+        {
+          m_cbSectorIdx += 1;
+          if (m_cbSectorIdx < SECTORS_TABLE_COUNT)
+          {
+            continue; // valid
+          }
+        }
+        
+        // not found or out-of-bounds
         m_cbSectorIdx = 0;
         continue;
       }
@@ -2739,6 +2845,7 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       // reuse m_cbStartingSectorIdx for the rest of the maps
       m_cbSectorIdx = m_cbStartingSectorIdx;
       m_cbLastPos = 0;
+      m_cbCurrentSector = 0;
       m_cbSecMapSpecified = true;
     }
     
@@ -2747,18 +2854,55 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       // write sector track numbering analog to above
       while ((m_cbLastPos < m_cbSpt) && (m_cbSectorIdx < SECTORS_TABLE_COUNT))
       {
-        data[packetIdx++] = (BYTE)(m_cbSectorsTable[m_cbSectorIdx++] >> 8); // track info only
+        if (m_cbSectorsTable[m_cbSectorIdx] == 0xFFFF)
+        {
+          m_cbSectorIdx++;
+          continue;
+        }
+        
+        m_cbCurrentSector = (BYTE)m_cbSectorsTable[m_cbSectorIdx];
+        data[packetIdx++] = (m_cbSectorsTable[m_cbSectorIdx++] >> 8) & 0x7F; // cyl info only
         m_cbLastPos++;
         CHECK_STREAM_END;
       }
       if ((m_cbSectorIdx == SECTORS_TABLE_COUNT) && (m_cbLastPos < m_cbSpt))
       {
+        bool found = false;
+            
+        while (m_cbCurrentSector && !found)
+        {
+          for (m_cbSectorIdx = 0; m_cbSectorIdx < SECTORS_TABLE_COUNT; m_cbSectorIdx++)
+          {
+            if (((BYTE)m_cbSectorsTable[m_cbSectorIdx] == m_cbCurrentSector) &&
+                 (m_cbSectorsTable[m_cbSectorIdx] != 0xFFFF))
+            {
+              found = true;
+              break;
+            }
+          }
+          
+          if (!found)
+          {
+            m_cbCurrentSector++;
+          }
+        }
+      
+        if (found)
+        {
+          m_cbSectorIdx += 1;
+          if (m_cbSectorIdx < SECTORS_TABLE_COUNT)
+          {
+            continue;
+          }
+        }
+        
         m_cbSectorIdx = 0;
         continue;
       }
       
       m_cbSectorIdx = m_cbStartingSectorIdx;
-      m_cbLastPos = 0;      
+      m_cbLastPos = 0;
+      m_cbCurrentSector = 0;
       m_cbSecTrackMapSpecified = true;
     }
     
@@ -2766,18 +2910,55 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
     {
       while ((m_cbLastPos < m_cbSpt) && (m_cbSectorIdx < SECTORS_TABLE_COUNT))
       {
-        data[packetIdx++] = (((BYTE)m_cbSectorsTable[m_cbSectorIdx++]) >> 7); // head info only
+        if (m_cbSectorsTable[m_cbSectorIdx] == 0xFFFF)
+        {
+          m_cbSectorIdx++;
+          continue;
+        }
+        
+        m_cbCurrentSector = (BYTE)m_cbSectorsTable[m_cbSectorIdx];
+        data[packetIdx++] = m_cbSectorsTable[m_cbSectorIdx++] >> 15; // head info only
         m_cbLastPos++;
         CHECK_STREAM_END;
       }
       if ((m_cbSectorIdx == SECTORS_TABLE_COUNT) && (m_cbLastPos < m_cbSpt))
       {
+        bool found = false;
+            
+        while (m_cbCurrentSector && !found)
+        {
+          for (m_cbSectorIdx = 0; m_cbSectorIdx < SECTORS_TABLE_COUNT; m_cbSectorIdx++)
+          {
+            if (((BYTE)m_cbSectorsTable[m_cbSectorIdx] == m_cbCurrentSector) &&
+                (m_cbSectorsTable[m_cbSectorIdx] != 0xFFFF))
+            {
+              found = true;
+              break;
+            }
+          }
+          
+          if (!found)
+          {
+            m_cbCurrentSector++;
+          }
+        }
+      
+        if (found)
+        {
+          m_cbSectorIdx += 1;
+          if (m_cbSectorIdx < SECTORS_TABLE_COUNT)
+          {
+            continue;
+          }
+        }
+        
         m_cbSectorIdx = 0;
         continue;
       }
       
       m_cbSectorIdx = m_cbStartingSectorIdx;
-      m_cbLastPos = 0;      
+      m_cbLastPos = 0;
+      m_cbCurrentSector = 0;      
       m_cbSecHeadMapSpecified = true;
     }
     
@@ -2796,8 +2977,8 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
         fdc->getParams()->Gap3Length = autoFormatGap;
       }
       
-      printGeometryInfo(m_cbTrack, m_cbHead, m_cbInterleave);
-      ui->print(Progmem::getString(Progmem::imdProgress), m_cbTrack, m_cbHead);
+      printGeometryInfo(m_cbCylinder, m_cbHead, m_cbInterleave);
+      ui->print(Progmem::getString(Progmem::imdProgress), m_cbCylinder, m_cbHead);
       m_cbGeometryChanged = false; // reset the flag
     }
     
@@ -2810,12 +2991,19 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
       {
         rwBufferPos = 0;
         
-        const BYTE logicalSector = (((BYTE)m_cbSectorsTable[m_cbSectorIdx]) & 0x3F);
-        const BYTE logicalTrack = m_cbHasSecTrackMap ? (BYTE)(m_cbSectorsTable[m_cbSectorIdx] >> 8) : m_cbTrack;
-        const BYTE logicalHead = m_cbHasSecHeadMap ? (((BYTE)m_cbSectorsTable[m_cbSectorIdx]) >> 7) : m_cbHead;
+        if (m_cbSectorsTable[m_cbSectorIdx] == 0xFFFF) // skip undefined
+        {
+          m_cbSectorIdx++;
+          continue;
+        }
+        
+        const BYTE logicalSector = (BYTE)m_cbSectorsTable[m_cbSectorIdx];
+        m_cbCurrentSector = logicalSector;
+        const BYTE logicalCylinder = m_cbHasSecTrackMap ? (m_cbSectorsTable[m_cbSectorIdx] >> 8) & 0x7F : m_cbCylinder;
+        const BYTE logicalHead = m_cbHasSecHeadMap ? m_cbSectorsTable[m_cbSectorIdx] >> 15 : m_cbHead;
         memset(&g_rwBuffer[0], 0, fdc->getParams()->SectorSizeBytes);
         
-        fdc->readWriteSectors(false, logicalSector, logicalSector, NULL, false, &logicalTrack, &logicalHead);        
+        fdc->readWriteSectors(false, logicalSector, logicalSector, NULL, false, &logicalCylinder, &logicalHead);        
         if (fdc->getLastError())
         {
           if (fdc->wasErrorNoDiskInDrive())
@@ -2911,6 +3099,35 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
     }    
     if ((m_cbSectorIdx == SECTORS_TABLE_COUNT) && (m_cbLastPos < m_cbSpt))
     {
+      bool found = false;
+            
+      while (m_cbCurrentSector && !found)
+      {
+        for (m_cbSectorIdx = 0; m_cbSectorIdx < SECTORS_TABLE_COUNT; m_cbSectorIdx++)
+        {
+          if (((BYTE)m_cbSectorsTable[m_cbSectorIdx] == m_cbCurrentSector) &&
+               (m_cbSectorsTable[m_cbSectorIdx] != 0xFFFF))
+          {
+            found = true;
+            break;
+          }
+        }
+        
+        if (!found)
+        {
+          m_cbCurrentSector++;
+        }
+      }
+    
+      if (found)
+      {
+        m_cbSectorIdx += 1;
+        if (m_cbSectorIdx < SECTORS_TABLE_COUNT)
+        {
+          continue;
+        }
+      }
+
       m_cbSectorIdx = 0;
       continue;
     }
@@ -2921,7 +3138,7 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
 
     // re-specify
     m_cbModeSpecified = false;
-    m_cbTrackSpecified = false;
+    m_cbCylinderSpecified = false;
     m_cbHeadSpecified = false;
     m_cbSptSpecified = false;
     m_cbSecSizeSpecified = false;
@@ -2931,6 +3148,7 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
     m_cbSecDataTypeSpecified = false;
     m_cbLastPos = 0;
     m_cbSectorIdx = 0;
+    m_cbCurrentSector = 0;
     m_cbStartingSectorIdx = (BYTE)-1;
     
     // and seek to next
@@ -2938,17 +3156,17 @@ bool IMD::readDiskCallback(DWORD packetNo, BYTE* data, WORD size)
     if (m_cbHead == fdc->getParams()->Heads)
     {
       m_cbHead = 0;
-      m_cbTrack++;
+      m_cbCylinder++;
     }
-    if (m_cbTrack == fdc->getParams()->Tracks)
+    if (m_cbCylinder == fdc->getParams()->Cylinders)
     {
       m_cbSuccess = true;
       m_cbResponseStr[0] = 0;
       return true; // flush the buffer
     }
 
-    ui->print(Progmem::getString(Progmem::imdProgress), m_cbTrack, m_cbHead);
-    fdc->seekDrive(m_cbTrack, m_cbHead);  
+    ui->print(Progmem::getString(Progmem::imdProgress), m_cbCylinder, m_cbHead);
+    fdc->seekDrive(m_cbCylinder, m_cbHead);  
   }
   
   return false;

@@ -67,7 +67,7 @@ public:
   {
     BYTE DriveNumber;
     BYTE DriveInches;
-    BYTE Tracks;
+    BYTE Cylinders;
     BYTE Heads;
     WORD SectorSizeBytes;
     BYTE SectorsPerTrack;
@@ -107,10 +107,10 @@ public:
   void setSilentOnTrivialError(bool silent) { m_silentOnTrivialError = silent; }
   
   // CHS and sizes
-  BYTE getCurrentTrack() { return m_currentTrack; }
+  BYTE getCurrentCylinder() { return m_currentCylinder; }
   BYTE getCurrentHead() { return m_currentHead; }
   BYTE getCurrentSector() { return m_currentSector; }
-  void convertLogicalSectorToCHS(WORD logicalSector, BYTE& track, BYTE& head, BYTE& sector);
+  void convertLogicalSectorToCHS(WORD logicalSector, BYTE& cyl, BYTE& head, BYTE& sector);
   WORD getTotalSectorCount();
   BYTE getMaximumSectorCountForRW(BYTE startSector, WORD operationBytes = 0);
   BYTE convertSectorSize(WORD sectorSize);
@@ -121,15 +121,15 @@ public:
   void resetController();
   void recalibrateDrive();
   void setCommunicationRate();
-  void seekDrive(BYTE track, BYTE head);
-  bool readSectorID(BYTE* track = NULL, BYTE* head = NULL, BYTE* sector = NULL, BYTE* sectorSizeN = NULL);
-  WORD readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector, WORD* dataPosition = NULL, bool deleted = false, BYTE* overrideTrack = NULL, BYTE* overrideHead = NULL);
-  bool formatTrack(bool customCHSVTable = false, BYTE interleave = 1);
-  WORD verify(BYTE sector = 1, bool wholeTrack = true, BYTE* overrideTrack = NULL, BYTE* overrideHead = NULL);
+  void seekDrive(BYTE cylinder, BYTE head);
+  bool readSectorID(BYTE* cyl = NULL, BYTE* head = NULL, BYTE* sector = NULL, BYTE* sectorSizeN = NULL);
+  WORD readWriteSectors(bool writeOperation, BYTE startSector, BYTE endSector, WORD* dataPosition = NULL, bool deleted = false, BYTE* overrideCyl = NULL, BYTE* overrideHead = NULL);
+  bool formatTrack(bool customCHSVTable = false, BYTE interleave = 1, BYTE startSector = 1);
+  WORD verify(BYTE sector = 1, bool wholeTrack = true, BYTE* overrideCyl = NULL, BYTE* overrideHead = NULL);
   bool verifyTrack0(bool beforeWriteOperation = false);
   void setActiveDrive(DiskDriveMediaParams* newParams);
   void setAutomaticMotorOff(bool enabled = true);
-  bool seekTest(BYTE toTrack, BYTE step = 1);
+  bool seekTest(BYTE toCylinder, BYTE step = 1);
   
 private:  
   FDC();
@@ -144,10 +144,10 @@ private:
   bool processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo);
   void fatalError(BYTE message);
   void setRecordingMode();
-  BYTE* getInterleaveTable(BYTE sectorsPerTrack, BYTE interleave);
+  BYTE* getInterleaveTable(BYTE sectorsPerTrack, BYTE interleave, BYTE startSector = 1);
   
   DiskDriveMediaParams* m_params;
-  BYTE m_currentTrack;
+  BYTE m_currentCylinder;
   BYTE m_currentHead;
   BYTE m_currentSector;
   bool m_idle;

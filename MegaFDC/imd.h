@@ -43,7 +43,7 @@ private:
   bool autodetectInterleave();
   void autodetectGaps(BYTE& sectorGap, BYTE& formatGap);
   bool tryAskIfCannotAutodetect(bool requiredDoubleStep, bool requiredHeads);
-  void printGeometryInfo(BYTE track, BYTE head, BYTE interleave);
+  void printGeometryInfo(BYTE cyl, BYTE head, BYTE interleave);
   
   FDC::DiskDriveMediaParams m_params;
   
@@ -54,6 +54,7 @@ private:
   bool m_xlat300and250;
   
   BYTE m_formatInterleave;
+  BYTE m_formatStartSector;
   WORD m_lastGoodCommRate;
   BYTE m_lastGoodUseFM;
   
@@ -61,7 +62,7 @@ private:
   bool m_cbSuccess;
   bool m_cbDoVerify;
   bool m_cbModeSpecified;
-  bool m_cbTrackSpecified;
+  bool m_cbCylinderSpecified;
   bool m_cbHeadSpecified;
   bool m_cbSptSpecified;
   bool m_cbSecSizeSpecified;
@@ -76,11 +77,12 @@ private:
   bool m_cbSeekIndicated;
   bool m_cbSkipBadSectorsInFile;
   BYTE m_cbMode;
-  BYTE m_cbTrack;
+  BYTE m_cbCylinder;
   BYTE m_cbHead;
   BYTE m_cbSpt;
   BYTE m_cbSecSize;
   BYTE m_cbInterleave;
+  BYTE m_cbCurrentSector;
   BYTE m_cbSectorDataType;
   BYTE m_cbSectorIdx; 
   BYTE m_cbStartingSectorIdx;
