@@ -469,7 +469,7 @@ private:
   
 // startup related
   PROGMEM_STR m_uiSplash[]           PROGMEM = "MegaFDC (c) 2023-2025 J. Bogin\r\nRegular build, ";
-  PROGMEM_STR m_uiBuild[]            PROGMEM = "26 Jun 2025\r\n";
+  PROGMEM_STR m_uiBuild[]            PROGMEM = "27 Jun 2025\r\n";
   PROGMEM_STR m_uiNoKeyboard[]       PROGMEM = "No keyboard, using serial input\r\n";
   PROGMEM_STR m_uiInitializingFDC[]  PROGMEM = "\r\nInitializing controller...";
   PROGMEM_STR m_uiDisabled1[]        PROGMEM = "- LCD and keyboard not enabled -";

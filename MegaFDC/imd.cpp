@@ -586,46 +586,56 @@ bool IMD::autodetectInterleave()
     return true;
   }
   
-  // sanity checks
-  BYTE thisSector = 0;
-  BYTE nextSector = 0;
+  fdc->getParams()->SectorsPerTrack = sectorsPerTrack; // store valid SPT
+  
+  BYTE startSector = (BYTE)-1;
+  BYTE idx2 = 0;
   idx = 0;
-  while (idx < SECTORS_TABLE_COUNT-1)
+  
+  // find the lowest logical sector number and its index in the sectors table  
+  while (idx < SECTORS_TABLE_COUNT)
   {
-    thisSector = (BYTE)m_cbSectorsTable[idx];
-    nextSector = (BYTE)m_cbSectorsTable[idx+1];    
-    if (m_cbSectorsTable[idx] == 0xFFFF) // undefined
+    if (m_cbSectorsTable[idx] != 0xFFFF) // undefined
     {
-      idx += 2;
-      continue;
-    }
-    
-    // neither of these is the last sector (or penultimate; account for sector 0)
-    if ((thisSector < sectorsPerTrack-1) && (nextSector < sectorsPerTrack-1))
-    {
-      break;
-    }
-    
-    // choose a different combination
+      if ((BYTE)(m_cbSectorsTable[idx]) < startSector)
+      {
+        startSector = (BYTE)(m_cbSectorsTable[idx]);
+        idx2 = idx;
+      }
+    }    
     idx++;
   }
   
-  if (idx < SECTORS_TABLE_COUNT-1)
+  // next sector
+  idx = idx2 + 1;
+  BYTE nextSector = 0;
+  while (idx < SECTORS_TABLE_COUNT)
   {
-    if ((nextSector - thisSector) == 1)
+    if (m_cbSectorsTable[idx] == 0xFFFF)
+    {
+      idx++;
+      continue;
+    }
+    
+    nextSector = (BYTE)(m_cbSectorsTable[idx]);
+    break;
+  }
+  
+  if (idx < SECTORS_TABLE_COUNT)
+  {   
+    if ((nextSector > startSector) && ((nextSector - startSector) == 1))
     {
       // confirmed sequential
-      fdc->getParams()->SectorsPerTrack = sectorsPerTrack;
       m_cbInterleave = 1;
       return true;
     }
     
     // nope, try to compute from thisSector
-    BYTE idx2 = idx;
-    BYTE interleave = 0;
+    BYTE interleave = 1;
+    idx2 = idx;
     while (idx2 < SECTORS_TABLE_COUNT)
     {
-      if ((BYTE)m_cbSectorsTable[idx2++] != thisSector+1)
+      if ((BYTE)(m_cbSectorsTable[idx2++]) != startSector+1)
       {
         interleave++;
       }
@@ -635,18 +645,22 @@ bool IMD::autodetectInterleave()
       }
     }
     
-    // double-check if nextSector is advanced by the same factor
-    if (((BYTE)m_cbSectorsTable[idx+1+interleave] == nextSector+1) &&
-        (interleave <= sectorsPerTrack))
+    // double-check if nextSector is advanced by the same factor,
+    // or that it loops around the starting sector
+    idx2 = idx+interleave;
+    
+    if ((idx2 < SECTORS_TABLE_COUNT) && (interleave < sectorsPerTrack))
     {
-      fdc->getParams()->SectorsPerTrack = sectorsPerTrack;
-      m_cbInterleave = interleave;
-      return true;
+      const BYTE next = (BYTE)(m_cbSectorsTable[idx2]);
+      if ((next == nextSector+1) || (next == startSector))
+      {
+        m_cbInterleave = interleave;
+        return true;
+      }
     }
   }
   
   // could not determine interleave, fall back to sequential but store SPT
-  fdc->getParams()->SectorsPerTrack = sectorsPerTrack;
   m_cbInterleave = 1;
   return false;
 }
