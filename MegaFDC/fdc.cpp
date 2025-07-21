@@ -1347,25 +1347,11 @@ BYTE FDC::getMaximumSectorCountForRW(BYTE startSector, WORD operationBytes)
   
   const WORD maxBytes = operationBytes ? operationBytes : SECTOR_BUFFER_SIZE;  
   WORD endSector = startSector - 1;
-  if (startSector == 0)
-  {
-    endSector = 0;
-  }
   endSector += maxBytes / m_params->SectorSizeBytes;
-  
-  WORD endSectorLimit = m_params->SectorsPerTrack;
-  if (startSector == 0)
+   
+  if (endSector > m_params->SectorsPerTrack)
   {
-    endSectorLimit--;
-  }
-  else if (startSector > 1)
-  {
-    endSectorLimit += startSector-1;
-  }
-  
-  if (endSector > endSectorLimit)
-  {
-    endSector = endSectorLimit;
+    endSector = m_params->SectorsPerTrack;
   }
   
   return endSector - startSector + 1;
