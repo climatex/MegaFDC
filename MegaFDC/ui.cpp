@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2026 J. Bogin, http://boginjr.com
 // User interface
 
 #include "config.h"
@@ -26,7 +26,7 @@ Ui::Ui()
    
   // setup display and keyboard I/O
 #ifdef UI_ENABLED
-  m_delayOnScreenFill = 1250; // ms
+  m_delayOnScreenFill = DELAY_SCREEN_FILL; // ms
   m_cursorFlipFlop = false;  
   
   // ui->print() allowed over serial and display
@@ -58,6 +58,9 @@ Ui::Ui()
     {
       g_uiEnabled = UI_LCD;
     }
+    
+    // notify serial console that the display output is active
+    Serial.print((const char*)Progmem::getString(Progmem::uiDisplayOutput));
   }
   
   // UI_DISABLED
@@ -105,8 +108,10 @@ bool Ui::detectKeyboard()
     {
       if (keyboard.read())
       {
-        // got a response, set NumLock
+        // got a response; set NumLock if enabled
+#ifdef NUM_LOCK_ON
         keyboard.setLock(PS2_LOCK_NUM);
+#endif
         return true;
       }
     }

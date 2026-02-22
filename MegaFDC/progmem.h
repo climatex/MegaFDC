@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2026 J. Bogin, http://boginjr.com
 // Program memory data
 
 #pragma once
@@ -12,7 +12,7 @@ class Progmem
 public:
   
   // enum in sync with order of m_stringTable
-  enum BYTE
+  enum
   {
     // basic UI    
     uiDeleteLine = 0,
@@ -38,18 +38,34 @@ public:
     uiCancelOption,
     uiChooseOption,
     
+    // memory card
+    sdCardMissing,
+    sdCardError,
+    sdFileError,
+    sdFileEnd,
+    sdDirListing,
+    sdDirEmpty,
+    sdDirPickRead,
+    sdDirPickWrite,
+    sdDirInvalid,
+    sdDirOverwrite,
+    
     // startup related   
     uiSplash,
     uiBuild,
+    uiSdCardBuild,
     uiNoKeyboard,
     uiInitializingFDC,
     uiDisabled1,
     uiDisabled2,
+    uiDisplayOutput,
     uiFatalError,
     uiSystemHalted,
     uiCtrlAltDel,
     uiLoadingConfig,
     uiLoadingAborted,
+    uiSetupAskSave,
+    uiSetupAskRemove,
     
     // FDC
     errRQMTimeout,
@@ -254,11 +270,11 @@ public:
     diskIoCreatingCPM,
     diskIoFormatOK,
     
-    // IMAGE, XFER and xmodem related
-    xferReadFile,
-    xferSaveFile,
+    // IMAGE, XFER and xmodem related    
     imageReadDisk,
     imageWriteDisk,
+    xferReadFile,
+    xferSaveFile,
     imageTransferLen,
     imageGeometry,
     xmodemUse1k,
@@ -412,7 +428,7 @@ public:
   };
   
   // retrieve string from progmem, buffer valid until next call
-  static const unsigned char* getString(unsigned char stringIndex)
+  static const unsigned char* getString(unsigned int stringIndex)
   {   
     strncpy_P(m_strBuffer, pgm_read_ptr(&(m_stringTable[stringIndex])), MAX_PROGMEM_STRING_LEN);
     return (const unsigned char*)&m_strBuffer[0];
@@ -467,18 +483,34 @@ private:
   PROGMEM_STR m_uiCancelOption[]     PROGMEM = "(C)ancel\r\n";
   PROGMEM_STR m_uiChooseOption[]     PROGMEM = "Choose: ";
   
+// memory card support
+  PROGMEM_STR m_sdCardMissing[]      PROGMEM = "No memory card present";
+  PROGMEM_STR m_sdCardError[]        PROGMEM = "Memory card or filesystem error";
+  PROGMEM_STR m_sdFileError[]        PROGMEM = "Path to file does not exist";
+  PROGMEM_STR m_sdFileEnd[]          PROGMEM = "Unexpected end of file";
+  PROGMEM_STR m_sdDirListing[]       PROGMEM = "SD card root (filter: *%s):\r\n\r\n";
+  PROGMEM_STR m_sdDirEmpty[]         PROGMEM = "No files";
+  PROGMEM_STR m_sdDirPickRead[]      PROGMEM = "\r\nFilename to read: ";
+  PROGMEM_STR m_sdDirPickWrite[]     PROGMEM = "\r\nFilename to write: ";
+  PROGMEM_STR m_sdDirInvalid[]       PROGMEM = "File or path not found\r\n";
+  PROGMEM_STR m_sdDirOverwrite[]     PROGMEM = "File exists, overwrite? Y/N: ";
+  
 // startup related
-  PROGMEM_STR m_uiSplash[]           PROGMEM = "MegaFDC (c) 2023-2025 J. Bogin\r\nRegular build, ";
-  PROGMEM_STR m_uiBuild[]            PROGMEM = "21 Jul 2025\r\n";
-  PROGMEM_STR m_uiNoKeyboard[]       PROGMEM = "No keyboard, using serial input\r\n";
+  PROGMEM_STR m_uiSplash[]           PROGMEM = "MegaFDC (c) 2023-2026 J. Bogin\r\nRegular build, ";
+  PROGMEM_STR m_uiBuild[]            PROGMEM = "22 Feb 2026\r\n";
+  PROGMEM_STR m_uiSdCardBuild[]      PROGMEM = "SD card support enabled\r\n";
+  PROGMEM_STR m_uiNoKeyboard[]       PROGMEM = "No keyboard, using serial input\r\n";  
   PROGMEM_STR m_uiInitializingFDC[]  PROGMEM = "\r\nInitializing controller...";
   PROGMEM_STR m_uiDisabled1[]        PROGMEM = "- LCD and keyboard not enabled -";
   PROGMEM_STR m_uiDisabled2[]        PROGMEM = "Use switch to enable, then reset";
+  PROGMEM_STR m_uiDisplayOutput[]    PROGMEM = "\r\nNote: Output is redirected to display\r\n";
   PROGMEM_STR m_uiFatalError[]       PROGMEM = "Fatal error:";
   PROGMEM_STR m_uiSystemHalted[]     PROGMEM = "\r\nSystem halted, reset required.\r\n";
   PROGMEM_STR m_uiCtrlAltDel[]       PROGMEM = "Press CTRL+ALT+DEL to reset...";
   PROGMEM_STR m_uiLoadingConfig[]    PROGMEM = "Loading parameters from EEPROM.\r\n";
   PROGMEM_STR m_uiLoadingAborted[]   PROGMEM = "Loading aborted";
+  PROGMEM_STR m_uiSetupAskSave[]     PROGMEM = "\r\nRemember these settings? Y/N: ";
+  PROGMEM_STR m_uiSetupAskRemove[]   PROGMEM = "Remove saved settings? Y/N: ";
 
 // FDC errors that abort the operation (first three halt the system)
   PROGMEM_STR m_errRQMTimeout[]      PROGMEM = "\r\nController not responding\r\n";
@@ -576,8 +608,12 @@ private:
   PROGMEM_STR m_helpTypeInto2[]      PROGMEM = "Creates a new file and uses\r\n";
   PROGMEM_STR m_helpTypeInto3[]      PROGMEM = "keyboard input for contents.\r\n\r\n";
   PROGMEM_STR m_helpXfer1[]          PROGMEM = "Usage: XFER filename\r\n";
+#ifdef SD_CARD_SUPPORT
+  PROGMEM_STR m_helpXfer2[]          PROGMEM = "File transfer to memory card.\r\n\r\n";
+#else
   PROGMEM_STR m_helpXfer2[]          PROGMEM = "File transfer over serial link.\r\n\r\n";
-  
+#endif
+
 // init drives command directly at startup
   PROGMEM_STR m_waitingForDrives[]   PROGMEM = "Starting MS-BOSS...\r\n\r\n"; // :-)  
   PROGMEM_STR m_countDrives[]        PROGMEM = "Disk drives connected (1-4): ";
@@ -688,19 +724,30 @@ private:
   PROGMEM_STR m_diskIoFormatOK[]     PROGMEM = "Format completed";
   
 // IMAGE, XFER, XMODEM stuff
-  PROGMEM_STR m_xferReadFile[]       PROGMEM = "(R)ead file and send to XMODEM\r\n";
-  PROGMEM_STR m_xferSaveFile[]       PROGMEM = "Receive XMODEM and (W)rite file\r\n";
   PROGMEM_STR m_imageReadDisk[]      PROGMEM = "(R)ead %c: into image file\r\n";
   PROGMEM_STR m_imageWriteDisk[]     PROGMEM = "(W)rite to %c: from image file\r\n";
-  PROGMEM_STR m_imageTransferLen[]   PROGMEM = "XMODEM transfer length:\r\n%lu bytes\r\n";
+#ifdef SD_CARD_SUPPORT
+  PROGMEM_STR m_xferReadFile[]       PROGMEM = "(R)ead file and save to SD\r\n";
+  PROGMEM_STR m_xferSaveFile[]       PROGMEM = "Copy from SD and (W)rite file\r\n";
+  PROGMEM_STR m_imageTransferLen[]   PROGMEM = "Image file size:\r\n%lu bytes\r\n";
+#else
+  PROGMEM_STR m_xferReadFile[]       PROGMEM = "(R)ead file and send to XMODEM\r\n";
+  PROGMEM_STR m_xferSaveFile[]       PROGMEM = "Receive XMODEM and (W)rite file\r\n";
+  PROGMEM_STR m_imageTransferLen[]   PROGMEM = "XMODEM transfer length:\r\n%lu bytes\r\n"; 
+#endif  
   PROGMEM_STR m_imageGeometry[]      PROGMEM = "(CHS %02ux%ux%02u, %u B sectors)\r\n\r\n";
   PROGMEM_STR m_xmodemUse1k[]        PROGMEM = "Use XMODEM-1K? Y/N: ";
   PROGMEM_STR m_xmodemPrefix[]       PROGMEM = "XMODEM: ";
   PROGMEM_STR m_xmodem1kPrefix[]     PROGMEM = "XMODEM-1K: ";
   PROGMEM_STR m_xmodemWaitSend[]     PROGMEM = "OK to launch Send\r\nTimeout 4 minutes\r\n";
   PROGMEM_STR m_xmodemWaitRecv[]     PROGMEM = "OK to launch Receive\r\nTimeout 4 minutes\r\n";
+#ifdef SD_CARD_SUPPORT
+  PROGMEM_STR m_xmodemTransferEnd[]  PROGMEM = "\rProcessing over";
+  PROGMEM_STR m_xmodemTransferFail[] PROGMEM = "\rProcessing aborted";  
+#else
   PROGMEM_STR m_xmodemTransferEnd[]  PROGMEM = "\rEnd of transfer";
   PROGMEM_STR m_xmodemTransferFail[] PROGMEM = "\rTransfer aborted";
+#endif
   
 // DIR
   PROGMEM_STR m_dirDirectory[]       PROGMEM = " [DIRECTORY]  ";
@@ -822,8 +869,13 @@ private:
   PROGMEM_STR m_imdXmodemVerify[]    PROGMEM = "Rigorous verify? (SLOW!) Y/N: ";
   PROGMEM_STR m_imdXmodemWaitSend[]  PROGMEM = "OK to launch Send\r\nTimeout 4 minutes\r\n";
   PROGMEM_STR m_imdXmodemWaitRecv[]  PROGMEM = "OK to launch Receive\r\nTimeout 4 minutes\r\n";
+#ifdef SD_CARD_SUPPORT
+  PROGMEM_STR m_imdXmodemXferEnd[]   PROGMEM = "\rProcessing over\r\n";
+  PROGMEM_STR m_imdXmodemXferFail[]  PROGMEM = "\rProcessing aborted\r\n";
+#else
   PROGMEM_STR m_imdXmodemXferEnd[]   PROGMEM = "\rEnd of transfer\r\n";
   PROGMEM_STR m_imdXmodemXferFail[]  PROGMEM = "\rTransfer aborted\r\n";
+#endif
   PROGMEM_STR m_imdXmodemErrPacket[] PROGMEM = "Invalid XMODEM data packet\r\n";
   PROGMEM_STR m_imdXmodemErrHeader[] PROGMEM = "Invalid header in file\r\n";
   PROGMEM_STR m_imdXmodemErrMode[]   PROGMEM = "IMD Mode byte must be 0-5\r\n";
@@ -839,7 +891,7 @@ private:
   PROGMEM_STR m_imdWriteDone[]       PROGMEM = "Type 2 empty newlines when done\r\n";
   PROGMEM_STR m_imdWriteEnterEsc[]   PROGMEM = "ENTER: continue, Esc: skip...";
   PROGMEM_STR m_imdTrackUnreadable[] PROGMEM = "Unreadable\r\n";
-  PROGMEM_STR m_imdUnreadableTrks[]  PROGMEM = "%u unreadable track(s)\r\n\r\n";
+  PROGMEM_STR m_imdUnreadableTrks[]  PROGMEM = "%u unreadable track(s)\r\n";
   PROGMEM_STR m_imdRunPython[]       PROGMEM = "Run 'imdtrim.py' before using!\r\n";
   
 #endif
@@ -853,10 +905,13 @@ private:
                                                   m_uiNo, m_uiNotAvailable, m_uiAbort, m_uiContinue, m_uiContinueAbort,
                                                   m_uiDecimalInput, m_uiHexadecimalInput, m_uiBytes, m_uiOperationPending,
                                                   m_uiCancelOption, m_uiChooseOption,
+                                                  
+                                                  m_sdCardMissing, m_sdCardError, m_sdFileError, m_sdFileEnd, m_sdDirListing,
+                                                  m_sdDirEmpty, m_sdDirPickRead, m_sdDirPickWrite, m_sdDirInvalid, m_sdDirOverwrite,
 
-                                                  m_uiSplash, m_uiBuild, m_uiNoKeyboard, m_uiInitializingFDC, m_uiDisabled1,
-                                                  m_uiDisabled2, m_uiFatalError, m_uiSystemHalted, m_uiCtrlAltDel, m_uiLoadingConfig,
-                                                  m_uiLoadingAborted,
+                                                  m_uiSplash, m_uiBuild, m_uiSdCardBuild, m_uiNoKeyboard, m_uiInitializingFDC,
+                                                  m_uiDisabled1, m_uiDisabled2, m_uiDisplayOutput, m_uiFatalError, m_uiSystemHalted,
+                                                  m_uiCtrlAltDel, m_uiLoadingConfig, m_uiLoadingAborted, m_uiSetupAskSave, m_uiSetupAskRemove,
                                                   
                                                   m_errRQMTimeout, m_errRecalibrate, m_errSeek, m_errWriProtect,
                                                   m_errINTTimeout, m_errOverrun, m_errCRC,  m_errNoData,
@@ -919,7 +974,7 @@ private:
                                                   m_diskIoTotalBadSect, m_diskIoTotalBadTrk, m_diskIoProgress,
                                                   m_diskIoQuickFormat, m_diskIoCreatingFAT, m_diskIoCreatingCPM, m_diskIoFormatOK,
                                                   
-                                                  m_xferReadFile, m_xferSaveFile, m_imageReadDisk, m_imageWriteDisk,
+                                                  m_imageReadDisk, m_imageWriteDisk, m_xferReadFile, m_xferSaveFile,
                                                   m_imageTransferLen, m_imageGeometry, m_xmodemUse1k, m_xmodemPrefix,
                                                   m_xmodem1kPrefix, m_xmodemWaitSend, m_xmodemWaitRecv, m_xmodemTransferEnd,
                                                   m_xmodemTransferFail,

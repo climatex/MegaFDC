@@ -1,15 +1,13 @@
-// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2026 J. Bogin, http://boginjr.com
 // EEPROM helper functions to load and save drives configuration
 
 #include "config.h"
-
-#ifndef BUILD_IMD_IMAGER
 
 // initialized EEPROM data structure
 // offset (dec.), length in bytes, description:
 
 // +00, 01, checksum byte
-// +01, 01, number of drives configured
+// +01, 01, number of drives configured (IMD mode: flag 0xEE, always 1 drive)
 // +02, 27, A: drive configuration
 // +29, 27, B: drive configuration
 // +56, 27, C: drive configuration
@@ -42,7 +40,11 @@ void eepromStoreConfiguration()
   
   // update number of drives
   EEPROM.update(eepromOffset++, 0);
+#ifndef BUILD_IMD_IMAGER
   EEPROM.update(eepromOffset++, g_numberOfDrives);
+#else
+  EEPROM.update(eepromOffset++, 0xEE); // flag 0xEE -> 1 drive configured in IMD mode
+#endif
   
   // A: to D:
   for (BYTE driveNo = 0; driveNo < g_numberOfDrives; driveNo++)
@@ -74,8 +76,13 @@ void eepromStoreConfiguration()
 bool eepromIsConfigurationPresent()
 {
   // check drive count validity
-  const BYTE driveCount = EEPROM.read(1);  
+  const BYTE driveCount = EEPROM.read(1);
+  
+#ifndef BUILD_IMD_IMAGER
   if ((driveCount == 0) || (driveCount > 4))
+#else
+  if (driveCount != 0xEE) // flag 0xEE -> 1 drive configured in IMD mode
+#endif
   {
     return false;
   }
@@ -105,7 +112,10 @@ bool eepromLoadConfiguration()
     delete[] g_diskDrives;
   }
   
-  g_numberOfDrives = EEPROM.read(eepromOffset++);
+  g_numberOfDrives = EEPROM.read(eepromOffset++);  
+#ifdef BUILD_IMD_IMAGER
+  g_numberOfDrives = 1; // flag 0xEE -> 1 drive configured in IMD mode
+#endif
   g_diskDrives = new FDC::DiskDriveMediaParams[g_numberOfDrives];
   
   for (BYTE driveNo = 0; driveNo < g_numberOfDrives; driveNo++)
@@ -120,5 +130,3 @@ bool eepromLoadConfiguration()
 
   return true;
 }
-
-#endif

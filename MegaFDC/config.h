@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2026 J. Bogin, http://boginjr.com
 // Build and wiring configuration
 
 #pragma once
@@ -7,9 +7,17 @@
 // comment out line to disable display and keyboard support
 #define UI_ENABLED
 
+// if there's a keyboard connected, turn Num Lock on upon initialization
+// comment out line to keep Num Lock off
+#define NUM_LOCK_ON
+
 // by default, build regular MegaFDC with command line and filesystem support
 // to work as an IMD imager, uncomment the following define
 //#define BUILD_IMD_IMAGER
+
+// by default, use serial file transfers for disk images
+// to use an SD card module connected to hardware SPI, uncomment the following define
+//#define SD_CARD_SUPPORT
 // end conditional build options.
 
 /*
@@ -24,7 +32,8 @@
   CLOCK (KEYB_CLK)      (PORTE5: D03) reconfigure note: must be interrupt capable
   DATA (KEYB_DATA)      (PORTG5: D04)
    
-  optional 128x64 parallel display (ST7920, others can be used too). Pinout configurable
+  optional 128x64 parallel LCD (ST7920, others can be used too). Pinout configurable
+  SPI OLED example:     https://gist.github.com/climatex/363f78db24959f8886149c3b740f35d1
   Vcc, GND              (Vcc, GND)
   BLK                   (GND)
   BLA                   (Vcc, break to turn off backlight)
@@ -43,6 +52,14 @@
   optional switch/jumper to switch the communication rate from 115200 bps to 9600 bps
   1st contact           (PORTG5: D06)
   2nd contact           (GND)
+  
+  optional (micro)SD card module on HW SPI; needs to be +5V tolerant (pinout fixed)
+  Vcc, GND              (Vcc, GND)
+  SCS                   (PORTB0: D53)
+  SCK                   (PORTB1: D52)
+  MOSI                  (PORTB2: D51)
+  MISO                  (PORTB3: D50)
+  activity LED output   (PORTC7: D30)
    
   Floppy disk controller (pinout fixed)
   Vcc, GND              (Vcc, GND)
@@ -72,6 +89,7 @@
 
 // UI defines
 //#define CLEAR_SCREEN_SERIAL  1                  // uncomment for ui->print("") function (which clears the LCD) to also clear the terminal over serial comm
+#define DELAY_SCREEN_FILL      1250               // on display output, if the last line has been filled: number of ms to wait before the screen is cleared
 #define UI_FONT                u8g2_font_4x6_mr   // 128 x 64 display with a 4x6 monospace font
 #define CHAR_WIDTH             4
 #define CHAR_HEIGHT            7                  // height+1 for one extra empty line between lines + blinking cursor
@@ -82,13 +100,9 @@
 #define MAX_PROGMEM_STRING_LEN 50                 // maximum number of characters for each string in PROGMEM, MAX+1 size of buffer for pgm_read_ptr()
 
 // FDC defines
-#ifndef BUILD_IMD_IMAGER                          // - normal MegaFDC:
-  #define SECTOR_BUFFER_SIZE   3072               // disk sector I/O buffer, needs to be divisible by 128
+#define SECTOR_BUFFER_SIZE     2048               // disk sector I/O buffer, needs to be divisible by 128
                                                   // min. 512B for FAT, and 1024 for 8" drive support and XMODEM-1K
                                                   // 1.44M disk image transfer thru XMODEM-1K vs bufsize: 3072 (3:45), 1024 (5:20), 512 (XMODEM-128, 10min)
-#else                                             // - IMD imager mode, works sector-by-sector:
-  #define SECTOR_BUFFER_SIZE   2048               // larger sectors (4K, 8K) can only be formatted/verified
-#endif
 
 #define IO_TIMEOUT             8500000            // number of (32bit) decrements in a while loop checking a response from the FDC; about 5 seconds 
 #define DISK_OPERATION_RETRIES 5                  // number of retries per disk operation (at least 5)
@@ -113,11 +127,15 @@
 #include <Arduino.h>
 #include <avr/sfr_defs.h>
 #include <string.h>
-#include "src/XModem/XModem.h"
+#include <EEPROM.h>
+#ifdef SD_CARD_SUPPORT
+  #include <SdFat.h>                              // please install the SdFat library for SD card support
+#else                                             // serial file transfers
+  #include "src/XModem/XModem.h"
+#endif
 #include "src/PS2KeyAdvanced/PS2KeyAdvanced.h"
 #include "src/U8g2/U8g2lib.h"
-#ifndef BUILD_IMD_IMAGER
-  #include <EEPROM.h>
+#ifndef BUILD_IMD_IMAGER  
   #include "src/FatFs/ff.h"
 #endif
 
@@ -126,10 +144,13 @@
 #include "isr.h"
 #include "ui.h"
 #include "fdc.h"
-#include "xmodem.h"
+#include "filexfer.h"
+#include "eeprom.h"
+#ifdef SD_CARD_SUPPORT
+  #include "sd.h"
+#endif
 #ifndef BUILD_IMD_IMAGER
   #include "commands.h"
-  #include "eeprom.h"  
   #include "cpm.h"
   #include "filesystem.h"
 #else

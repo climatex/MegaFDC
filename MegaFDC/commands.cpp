@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2026 J. Bogin, http://boginjr.com
 // Command prompt with commands
 
 #include "config.h"
@@ -46,6 +46,10 @@ void InitializeDrives()
   ui->print("");
   ui->print(Progmem::getString(Progmem::uiSplash));
   ui->print(Progmem::getString(Progmem::uiBuild));
+  
+#ifdef SD_CARD_SUPPORT
+  ui->print(Progmem::getString(Progmem::uiSdCardBuild));
+#endif
   
   // no keyboard present?
   if (g_uiEnabled == UI_LCD)
@@ -897,7 +901,7 @@ void SetDriveParameters(FDC::DiskDriveMediaParams* drive)
       drive->SectorSizeBytes = 512;
       drive->SectorsPerTrack = 16;
       drive->GapLength = 0x18;   //gaps a little lower to fit in 16 sectors
-      drive->Gap3Length = 0x50;
+      drive->Gap3Length = 0x30;
       drive->FATMediaDescriptor = 0xF9;
       drive->FATRootDirEntries = 128;
       drive->FATClusterSizeBytes = 512;
@@ -2001,6 +2005,22 @@ void CommandIMAGE(FDC::DiskDriveMediaParams* drive)
     return;    
   }
   
+#ifdef SD_CARD_SUPPORT
+
+  // read into image file
+  if (operation == 'R')
+  {
+    sdReadDiskIntoImageFile();
+  }
+  
+  // write from image file  
+  else
+  {
+    sdWriteDiskFromImageFile();
+  }
+  
+#else
+  
   // offer XMODEM-1K with 1kB packets
   bool useXMODEM1K = false;
   
@@ -2038,6 +2058,8 @@ void CommandIMAGE(FDC::DiskDriveMediaParams* drive)
   {
     xmodemWriteDiskFromImageFile(useXMODEM1K);
   }
+  
+#endif
   
   // reset to previous drive
   if (oldDriveNumber != chosenDrive)
@@ -2109,6 +2131,22 @@ void CommandXFER(const BYTE* fileName)
   key = toupper(ui->readKey(fat ? "RWC" : "RC"));
   ui->print(Progmem::getString(Progmem::uiEchoKey), key);
   
+#ifdef SD_CARD_SUPPORT
+
+  // store file from floppy to SD (FAT12, CP/M)
+  if (key == 'R')
+  {
+    fileFloppyToSd(fileName);
+  }
+  
+  // copy file from SD to floppy (FAT12)
+  else if (key == 'W')
+  {   
+    fileSdToFloppy(fileName);
+  }
+  
+#else
+  
   // read and send file over XMODEM (FAT12, CP/M)
   if (key == 'R')
   {
@@ -2120,6 +2158,9 @@ void CommandXFER(const BYTE* fileName)
   {   
     xmodemReceiveFile(fileName);
   }
+  
+#endif
+
 }
 
 #endif

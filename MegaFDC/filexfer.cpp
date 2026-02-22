@@ -1,5 +1,5 @@
-// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
-// XMODEM helpers
+// MegaFDC (c) 2023-2026 J. Bogin, http://boginjr.com
+// File transfer helpers (XMODEM, SD)
 
 #include "config.h"
 
@@ -53,6 +53,9 @@ void dumpSerialTransfer()
 }
 
 #ifndef BUILD_IMD_IMAGER
+FRESULT lastResult;
+
+#ifndef SD_CARD_SUPPORT
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -341,7 +344,6 @@ bool xmodemWriteDiskFromImageFile(bool useXMODEM_1K)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // always 128 byte packets here
-FRESULT lastResult;
 
 bool xmodemFileTxCallback(DWORD no, BYTE* data, WORD size)
 {
@@ -464,7 +466,7 @@ bool xmodemSendFile(const BYTE* existingFileName)
   bool result = modem.transmit() && success;
   if (fat)
   {
-    FAT_EXECUTE(f_close(getFatFile()));
+    f_close(getFatFile());
   }
   else
   {
@@ -535,7 +537,7 @@ bool xmodemReceiveFile(const BYTE* newFileName)
   
   XModem modem(xmodemRx, xmodemTx, xmodemFileRxCallback);
   bool result = modem.receive() && success;
-  FAT_EXECUTE(f_close(getFatFile()));  
+  f_close(getFatFile());
   
   ui->disableKeyboard(false);
     
@@ -563,4 +565,475 @@ bool xmodemReceiveFile(const BYTE* newFileName)
   return result;
 }
 
-#endif
+#else // SD_CARD_SUPPORT
+  
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////// disk images from/to an SD card ///////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool sdReadDiskIntoImageFile()
+{ 
+  totalSectorsCount = badSectorsCount = 0;  
+  
+  // detect disk presence
+  if (!fdc->verifyTrack0())
+  {
+    return false;
+  }
+  
+  // detect memory card and pick file to write
+  if (!SdDetectMemoryCard())
+  {
+    return false;
+  }
+  
+  File* file = SdPickFile(true);
+  if (!file)
+  {
+    return false;
+  }
+  
+  // set keyb and auto motor off disabled
+  ui->disableKeyboard(true);
+  fdc->setAutomaticMotorOff(false);  
+  ui->print("");
+  
+  success = true;      
+  while(true)
+  {
+    if (totalSectorsCount >= fdc->getTotalSectorCount())
+    {
+      break; // end of disk
+    }
+            
+    BYTE cyl;
+    BYTE head;
+    BYTE startSector;
+    fdc->convertLogicalSectorToCHS(totalSectorsCount, cyl, head, startSector);
+    
+    const BYTE sectorCount = fdc->getMaximumSectorCountForRW(startSector);
+    const BYTE endSector = startSector + sectorCount-1;
+    
+    ui->print(Progmem::getString(Progmem::diskIoProgress), cyl, head);
+    
+    if ((fdc->getCurrentCylinder() != cyl) || (fdc->getCurrentHead() != head))
+    {
+      fdc->seekDrive(cyl, head);
+    }
+       
+    fdc->readWriteSectors(false, startSector, endSector);
+    if (fdc->getLastError())
+    {
+      // write protect check skipped here as we are reading
+      if (fdc->wasErrorNoDiskInDrive())
+      {
+        success = false;
+        break;
+      }
+      
+      // clear out offending bad sectors with 0s inside the disk R/W buffer
+      memset(&g_rwBuffer[0], 0, sectorCount * fdc->getParams()->SectorSizeBytes);
+      badSectorsCount += sectorCount;
+    }
+    
+    // write to SD card
+    PORTC ^= 0x80; // toggle activity LED
+    const size_t result = file->write((const BYTE*)&g_rwBuffer[0], sectorCount * fdc->getParams()->SectorSizeBytes);
+    const bool flushed = file->sync();
+    PORTC ^= 0x80;
+    if (!result || !flushed)          
+    {
+      ui->print(Progmem::getString(Progmem::uiNewLine));
+      ui->print(Progmem::getString(Progmem::sdCardError));
+      ui->print(Progmem::getString(Progmem::uiNewLine));
+      success = false;
+      break; 
+    }
+    
+    totalSectorsCount += sectorCount;
+  }
+    
+  ui->print(Progmem::getString(Progmem::uiDeleteLine));
+  file->close();
+  fdc->seekDrive(0, 0);
+  
+  if (!success)
+  { 
+    ui->print(Progmem::getString(Progmem::xmodemTransferFail));
+    ui->print(Progmem::getString(Progmem::uiNewLine2x));
+  }
+  
+  // show bad sectors if any
+  else
+  {
+    if (badSectorsCount)
+    {
+      ui->print(Progmem::getString(Progmem::diskIoTotalBadSect), badSectorsCount);
+      ui->print(Progmem::getString(Progmem::uiNewLine2x));
+    }
+    else
+    {
+      ui->print(Progmem::getString(Progmem::xmodemTransferEnd));
+      ui->print(Progmem::getString(Progmem::uiNewLine2x));
+    }
+  }
+  
+  // reenable motor timer
+  ui->disableKeyboard(false);
+  fdc->setAutomaticMotorOff(true);
+  
+  return success;
+}
+
+bool sdWriteDiskFromImageFile()
+{
+  totalSectorsCount = badSectorsCount = 0;
+  
+  if (!fdc->verifyTrack0(true))
+  {
+    return false;
+  }
+  
+  if (!SdDetectMemoryCard())
+  {
+    return false;
+  }
+  
+  File* file = SdPickFile(false);
+  if (!file)
+  {
+    return false;
+  }
+
+  ui->disableKeyboard(true);
+  fdc->setAutomaticMotorOff(false);  
+  ui->print("");
+  
+  success = true;      
+  while(true)
+  {
+    if (totalSectorsCount >= fdc->getTotalSectorCount())
+    {
+      break;
+    }
+ 
+    BYTE cyl;
+    BYTE head;
+    BYTE startSector;
+    fdc->convertLogicalSectorToCHS(totalSectorsCount, cyl, head, startSector);
+    
+    const BYTE sectorCount = fdc->getMaximumSectorCountForRW(startSector);
+    const BYTE endSector = startSector + sectorCount-1;
+    const WORD length = sectorCount * fdc->getParams()->SectorSizeBytes;
+    
+    // read from SD card
+    PORTC ^= 0x80; // toggle activity LED
+    int result = file->read((BYTE*)&g_rwBuffer[0], length);
+    PORTC ^= 0x80;
+    if (result != length)
+    {
+      ui->print(Progmem::getString(Progmem::uiNewLine));
+      ui->print(Progmem::getString((result == -1) ? Progmem::sdCardError : Progmem::sdFileEnd));
+      ui->print(Progmem::getString(Progmem::uiNewLine));
+      success = false;
+      break; 
+    }
+    
+    ui->print(Progmem::getString(Progmem::diskIoProgress), cyl, head);    
+    if ((fdc->getCurrentCylinder() != cyl) || (fdc->getCurrentHead() != head))
+    {
+      fdc->seekDrive(cyl, head);      
+    }
+    
+    // write    
+    fdc->readWriteSectors(true, startSector, endSector);
+    if (fdc->getLastError())
+    {
+      // do not retry if disk is write protected or there is no disk in drive
+      if (fdc->wasErrorNoDiskInDrive() || fdc->wasErrorDiskProtected())
+      {
+        success = false;
+        break;
+      }
+      
+      badSectorsCount += sectorCount;
+    }
+    
+    totalSectorsCount += sectorCount;
+  }
+  
+  ui->print(Progmem::getString(Progmem::uiDeleteLine));
+  file->close();
+  fdc->seekDrive(0, 0);
+   
+  if (!success)
+  {  
+    ui->print(Progmem::getString(Progmem::xmodemTransferFail));
+    ui->print(Progmem::getString(Progmem::uiNewLine2x));
+  }
+  
+  else
+  {
+    if (badSectorsCount)
+    {
+      ui->print(Progmem::getString(Progmem::diskIoTotalBadSect), badSectorsCount);
+      ui->print(Progmem::getString(Progmem::uiNewLine2x));
+    }
+    else
+    {
+      ui->print(Progmem::getString(Progmem::xmodemTransferEnd));
+      ui->print(Progmem::getString(Progmem::uiNewLine2x));
+    }
+  }
+  
+  ui->disableKeyboard(false);
+  fdc->setAutomaticMotorOff(true);
+  
+  return success;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////// files from/to an SD card //////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool fileFloppyToSd(const BYTE* existingFileName)
+{
+  BYTE buf[512];
+  lastResult = FR_OK;
+  const bool fat = fdc->getParams()->UseFAT12;  
+  
+  if (fat)
+  {
+    if (!fatMount())
+    {
+      return false;
+    }  
+    
+    buf[0] = 0;
+    strcat(buf, g_path);
+    strcat(buf, existingFileName);
+    
+    FAT_EXECUTE_0(f_open(getFatFile(), buf, FA_READ));
+  }
+
+  else
+  {
+    if (!cpmOpenFile(existingFileName, 0))
+    {
+      return false;
+    }
+  }
+  
+  if (!SdDetectMemoryCard())
+  {
+    if (fat) f_close(getFatFile()); else cpmCloseFile();
+    return false;
+  }
+  
+  File* file = SdPickFile(true);
+  if (!file)
+  {
+    if (fat) f_close(getFatFile()); else cpmCloseFile();
+    return false;
+  }
+
+  ui->disableKeyboard(true);
+  fdc->setAutomaticMotorOff(false);
+  ui->print("");  
+  
+  success = true;
+  while (true)
+  {
+    xmRWPos = 0;
+    
+    if (fat)
+    {
+      lastResult = f_read(getFatFile(), &buf[0], sizeof(buf), &xmRWPos);
+      if (lastResult != FR_OK)
+      {
+        success = false;
+        break;
+      }
+      
+      else if (!xmRWPos)
+      {
+        break;
+      }
+    }
+    
+    else
+    {
+      BYTE outputSize;
+      if (cpmReadFileRecord(outputSize))
+      {
+        if (outputSize)
+        {
+          memcpy(&buf[0], &g_rwBuffer[0], outputSize);
+          xmRWPos = outputSize;          
+        }
+        
+        else
+        {
+          break;
+        }
+      }
+      
+      else
+      {
+        // disk read failure
+        success = false;
+        break;
+      }
+    }
+    
+    // write to SD card
+    PORTC ^= 0x80; // toggle activity LED
+    const size_t result = file->write((const BYTE*)&buf[0], xmRWPos);
+    const bool flushed = file->sync();
+    PORTC ^= 0x80;
+    if (!result || !flushed)          
+    {
+      ui->print(Progmem::getString(Progmem::uiNewLine));
+      ui->print(Progmem::getString(Progmem::sdCardError));
+      ui->print(Progmem::getString(Progmem::uiNewLine));
+      break; 
+    }
+  }
+  
+  if (fat)
+  {
+    f_close(getFatFile());
+  }
+  else
+  {
+    cpmCloseFile();
+  }    
+  
+  ui->disableKeyboard(false);
+  fdc->setAutomaticMotorOff(true);
+  file->close();
+  ui->print(Progmem::getString(Progmem::uiDeleteLine));
+  
+  if (!success)
+  {  
+    if (fat)
+    {
+      fatResult(lastResult);  
+    }
+    else
+    {
+      ui->print(Progmem::getString(Progmem::fsDiskError));
+      ui->print(Progmem::getString(Progmem::uiNewLine2x));
+    }
+    
+    ui->print(Progmem::getString(Progmem::xmodemTransferFail));
+    ui->print(Progmem::getString(Progmem::uiNewLine2x));
+  }
+  
+  else
+  {
+    ui->print(Progmem::getString(Progmem::xmodemTransferEnd));
+    ui->print(Progmem::getString(Progmem::uiNewLine2x));
+  }
+    
+  return success;
+}
+
+bool fileSdToFloppy(const BYTE* newFileName)
+{
+  BYTE buf[512];
+  lastResult = FR_OK;
+  
+  if (!fatMount())
+  {
+    return false;
+  }
+  
+  if (!SdDetectMemoryCard())
+  {
+    return false;
+  }
+  
+  File* file = SdPickFile(false);
+  if (!file)
+  {
+    return false;
+  }
+  
+  buf[0] = 0;
+  strcat(buf, g_path);
+  strcat(buf, newFileName);
+  
+  f_unlink(buf);  
+  if (fatResult(f_open(getFatFile(), buf, FA_WRITE | FA_CREATE_NEW)) != FR_OK)
+  {
+    file->close();
+    return false;
+  }
+    
+  ui->disableKeyboard(true);
+  fdc->setAutomaticMotorOff(false);
+  ui->print("");
+  
+  success = true;
+  while(true)
+  {
+    xmRWPos = 0;
+    
+    // read from SD card
+    PORTC ^= 0x80; // toggle activity LED
+    int result = file->read((BYTE*)&buf[0], sizeof(buf));
+    PORTC ^= 0x80;
+    if (result == -1)
+    {
+      ui->print(Progmem::getString(Progmem::uiNewLine));
+      ui->print(Progmem::getString(Progmem::sdCardError));
+      ui->print(Progmem::getString(Progmem::uiNewLine));
+      break; 
+    }
+    
+    lastResult = f_write(getFatFile(), &buf[0], result, &xmRWPos);
+    if (lastResult != FR_OK)
+    {
+      success = false;
+      break;
+    }
+  
+    // end of file
+    if (result < sizeof(buf))
+    {
+      break;
+    }
+  }  
+  
+  file->close();
+  f_close(getFatFile());
+  ui->print(Progmem::getString(Progmem::uiDeleteLine));
+  
+  ui->disableKeyboard(false);    
+  fdc->setAutomaticMotorOff(true);
+  
+  if (!success)
+  {
+    fatResult(lastResult);
+    
+    ui->print(Progmem::getString(Progmem::xmodemTransferFail));
+    ui->print(Progmem::getString(Progmem::uiNewLine2x));
+  }
+  
+  else
+  {
+    ui->print(Progmem::getString(Progmem::xmodemTransferEnd));
+    ui->print(Progmem::getString(Progmem::uiNewLine2x));
+  }
+    
+  return success;
+}
+
+#endif // SD_CARD_SUPPORT
+
+#endif // BUILD_IMD_IMAGER

@@ -1,4 +1,4 @@
-// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
+// MegaFDC (c) 2023-2026 J. Bogin, http://boginjr.com
 // Floppy disk controller interface
 // Software compatible with a NEC uPD765 or any other PC FDC
 
@@ -70,7 +70,8 @@ FDC::FDC()
   DDRA = 0xFF;
   PORTA = 0;
   
-  // TG43 (on PD7) off by default
+  // /TG43 (on PD7) off by default
+  DDRD = 0x80;
   PORTD |= 0x80;
 
   // pull /CS, /RD, /WR high, RESET high for some good 30us
@@ -431,7 +432,7 @@ void FDC::recalibrateDrive()
           m_idle = true;
           
           m_lastError = false;
-          PORTD |= 0x80; // deassert TG43
+          PORTD |= 0x80; // deassert /TG43
           return;
         }
       }
@@ -552,7 +553,7 @@ void FDC::seekDrive(BYTE cylinder, BYTE head)
           m_lastError = false;
           m_idle = true;
           
-          // handle optional TG43 line on PD7
+          // handle optional /TG43 line on PD7
           if (m_currentCylinder > 42)
           {
             PORTD &= 0x7F; //TG43 on
@@ -1081,7 +1082,7 @@ bool FDC::processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo)
   }
   
   m_lastError = true;
-  BYTE errorMessage = 0;
+  WORD errorMessage = 0;
     
   // CRC error
   if ((st1 & 0x20) || (st2 & 0x20))
@@ -1172,7 +1173,7 @@ bool FDC::processIOResult(BYTE st0, BYTE st1, BYTE st2, BYTE endSectorNo)
 }
 
 // clears the screen (serial: newlines), informs and goes into infinite loop
-void FDC::fatalError(BYTE message)
+void FDC::fatalError(WORD message)
 {
   // make sure printing and keyboard are enabled, motor timer on
   ui->setPrintDisabled(false, false);

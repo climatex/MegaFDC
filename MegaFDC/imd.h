@@ -1,12 +1,11 @@
-// MegaFDC (c) 2023-2025 J. Bogin, http://boginjr.com
-// IMD (ImageDisk)-compatible file disk imager
+// MegaFDC (c) 2023-2026 J. Bogin, http://boginjr.com
+// IMD mode
 
 #pragma once
 
 void InitializeDrives();
 void ProcessCommands();
 
-#define CHECK_STREAM_END    if (packetIdx >= size) return true;
 #define SECTORS_TABLE_COUNT 128
 
 class IMD
@@ -14,8 +13,6 @@ class IMD
 public:
   IMD();
   virtual ~IMD() {}
-  
-  FDC::DiskDriveMediaParams& getParams() { return m_params; }
   
   void setAutodetectDoubleStep(bool set) { m_autoDoubleStep = set; }
   void setAutodetectHeads(bool set) { m_autoHeads = set; }
@@ -30,11 +27,7 @@ public:
   void eraseDisk();
   void testController();
   void testDrive();
-  
-  bool readDiskCallback(DWORD packetNo, BYTE* data, WORD size);
-  bool writeDiskCallback(DWORD packetNo, BYTE* data, WORD size);
-  void cleanupCallback();
-  
+   
 private:
   bool autodetectCommRate();
   bool autodetectHeads();
@@ -44,8 +37,7 @@ private:
   void autodetectGaps(BYTE& sectorGap, BYTE& formatGap);
   bool tryAskIfCannotAutodetect(bool requiredDoubleStep, bool requiredHeads);
   void printGeometryInfo(BYTE cyl, BYTE head, BYTE interleave);
-  
-  FDC::DiskDriveMediaParams m_params;
+  void cleanup();
   
   bool m_autoDoubleStep;
   bool m_autoHeads;
@@ -58,7 +50,28 @@ private:
   WORD m_lastGoodCommRate;
   BYTE m_lastGoodUseFM;
   
-  // XMODEM callbacks
+  // shared between both XMODEM and SD implementations
+  BYTE m_cbInterleave;
+  WORD* m_cbSectorsTable;
+  BYTE* m_cbSectorNumberingMap;
+  BYTE* m_cbSectorTrackMap;
+  BYTE* m_cbSectorHeadMap; 
+  
+#ifdef SD_CARD_SUPPORT
+
+  bool readDiskInternal(File* file, BYTE* responseStr, WORD& totalBadSectorsDisk, BYTE& unreadableTracks);
+  bool writeDiskInternal(bool skipBadSectorsInFile, bool doVerify, File* file, BYTE* responseStr, WORD& totalBadSectorsDisk, WORD& totalBadSectorsFile);
+
+#else
+  
+public:
+  
+  // XMODEM callbacks  
+  bool readDiskCallback(DWORD packetNo, BYTE* data, WORD size);
+  bool writeDiskCallback(DWORD packetNo, BYTE* data, WORD size);
+  
+private:
+  
   bool m_cbSuccess;
   bool m_cbDoVerify;
   bool m_cbModeSpecified;
@@ -80,8 +93,7 @@ private:
   BYTE m_cbCylinder;
   BYTE m_cbHead;
   BYTE m_cbSpt;
-  BYTE m_cbSecSize;
-  BYTE m_cbInterleave;
+  BYTE m_cbSecSize;  
   BYTE m_cbCurrentSector;
   BYTE m_cbSectorDataType;
   BYTE m_cbSectorIdx; 
@@ -92,9 +104,7 @@ private:
   WORD m_cbTotalBadSectorsDisk;
   WORD m_cbTotalBadSectorsFile;
   BYTE m_cbUnreadableTracks;
-  BYTE* m_cbSectorNumberingMap;
-  BYTE* m_cbSectorTrackMap;
-  BYTE* m_cbSectorHeadMap;
-  WORD* m_cbSectorsTable;
   BYTE m_cbResponseStr[70];
+
+#endif
 };
