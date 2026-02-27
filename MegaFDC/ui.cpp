@@ -605,7 +605,11 @@ void Ui::disableKeyboard(bool disable)
 #ifdef UI_ENABLED
 
   // remember key locks
+#ifdef NUM_LOCK_ON
   static BYTE lock = PS2_LOCK_NUM;
+#else
+  static BYTE lock = 0;
+#endif
   if (disable)
   {
     lock = keyboard.getLock();
